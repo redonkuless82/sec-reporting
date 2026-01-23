@@ -1,115 +1,200 @@
 # Quick Start Guide - Compliance Tracker
 
-## Current Status
+Get the Compliance Tracker up and running in minutes with Docker Compose.
 
-✅ **Docker Images Built:**
-- `compliance-tracker-backend:latest`
-- `compliance-tracker-frontend:latest`
+## Prerequisites
 
-✅ **Configuration Updated:**
-- Frontend: Port **8010** (to avoid nginx conflict)
-- Backend: Port **3001** (to avoid port 3000 conflict)
-- Database: Port **3307** (to avoid MySQL conflict on 3306)
+- Docker and Docker Compose installed
+- Git (to clone the repository)
 
-## Deploy When Ready
+## Quick Setup (3 Steps)
 
-### Option 1: Docker Compose (Recommended for your setup)
+### 1. Clone and Configure
 
 ```bash
-cd /home/ubuntu/sec-report
+# Clone the repository
+git clone <your-repo-url>
+cd sec-report
 
-# Start all services
-docker-compose up -d
+# Copy environment file
+cp .env.example .env
 
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f
-
-# Load seed data (after containers are running)
-sleep 30  # Wait for database to be ready
-docker cp backend/database/seed-data.sql compliance-tracker-db:/tmp/
-docker exec -i compliance-tracker-db mysql -u root -ppassword compliance_tracker < /tmp/seed-data.sql
+# (Optional) Edit .env to change database credentials
+# Default credentials work fine for testing
 ```
 
-### Access Points:
-- **Frontend**: http://localhost:8010 or http://your-ip:8010
-- **Backend API**: http://localhost:3001
-- **Database**: localhost:3307
-
-### Verify It's Working:
+### 2. Start the Application
 
 ```bash
-# Check health
-curl http://localhost:3001/health
+# Start all services (database will be automatically initialized)
+docker-compose up -d
+
+# Wait for services to be ready (about 30 seconds)
+docker-compose logs -f
+```
+
+Press `Ctrl+C` to exit logs once you see the backend is ready.
+
+### 3. Access the Application
+
+- **Frontend Dashboard**: http://localhost:8010
+- **Backend API**: http://localhost:3002
+- **Database**: localhost:3308
+
+## Verify It's Working
+
+```bash
+# Check health endpoint
+curl http://localhost:3002/health
 
 # Check systems API
-curl http://localhost:3001/systems
+curl http://localhost:3002/systems
 
 # Check frontend
 curl http://localhost:8010
 ```
 
-## Troubleshooting
+## What's Included
 
-### If ports are still in use:
+✅ **Automatic Database Setup**
+- Database schema is created automatically on first run
+- No manual SQL scripts needed
 
+✅ **All Services Configured**
+- MariaDB database with persistent storage
+- NestJS backend API
+- React frontend with Nginx
+
+✅ **Ready for Data Import**
+- Upload CSV files via the web interface
+- Or use the API endpoints
+
+## Port Configuration
+
+The application uses the following ports:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Frontend | 8010 | Web interface |
+| Backend | 3002 | API server (mapped from internal 3000) |
+| Database | 3308 | MariaDB (mapped from internal 3306) |
+
+## Import Your First CSV
+
+Once running, you can import data:
+
+### Via Web Interface
+1. Navigate to http://localhost:8010
+2. Use the CSV import feature
+3. Upload your compliance data file
+
+### Via API
 ```bash
-# Check what's using the ports
-sudo lsof -i :8010
-sudo lsof -i :3001
-sudo lsof -i :3307
-
-# Stop conflicting services or change ports in docker-compose.yml
+curl -X POST http://localhost:3002/import/csv \
+  -F "file=@/path/to/your-data.csv"
 ```
 
-### If containers won't start:
+## Common Commands
 
 ```bash
 # View logs
-docker-compose logs db
-docker-compose logs backend
-docker-compose logs frontend
+docker-compose logs -f
 
-# Restart specific service
-docker-compose restart backend
+# View specific service logs
+docker-compose logs -f backend
+docker-compose logs -f frontend
+docker-compose logs -f db
+
+# Restart services
+docker-compose restart
+
+# Stop services
+docker-compose down
+
+# Stop and remove all data (fresh start)
+docker-compose down -v
 ```
 
-### Clean slate:
+## Troubleshooting
+
+### Port Already in Use
+
+If you get port conflicts, edit [`docker-compose.yml`](docker-compose.yml) and change the port mappings:
+
+```yaml
+ports:
+  - "8011:80"  # Change 8010 to 8011 for frontend
+  - "3003:3000"  # Change 3002 to 3003 for backend
+  - "3309:3306"  # Change 3308 to 3309 for database
+```
+
+### Database Connection Issues
 
 ```bash
-# Remove everything and start over
+# Check database is healthy
+docker-compose ps
+
+# View database logs
+docker-compose logs db
+
+# Restart database
+docker-compose restart db
+```
+
+### Frontend Can't Connect to Backend
+
+Check the backend is running:
+```bash
+curl http://localhost:3002/health
+```
+
+If it returns `{"status":"ok"}`, the backend is working.
+
+### Clean Slate
+
+To start completely fresh:
+```bash
+# Remove all containers and volumes
 docker-compose down -v
+
+# Remove images (optional)
+docker-compose down --rmi all
+
+# Start again
 docker-compose up -d
 ```
 
-## What You'll See
+## Environment Variables
 
-Once deployed and seed data is loaded:
+The root [`.env`](.env.example) file controls Docker Compose settings:
 
-1. **Search** for systems: "web-prod-01", "db-prod-01", "cache-prod-01"
-2. **View calendar** showing daily compliance status
-3. **Filter by tool** (R7, AM, DF, IT, VM)
-4. **See different states**:
-   - 🟢 Green: Fully compliant
-   - 🔴 Red: Missing from tools
-   - ⚪ Gray: No data
+```env
+# Database Configuration
+DB_USER=compliance
+DB_PASSWORD=secure-password-change-me
+DB_NAME=compliance_tracker
 
-## Seed Data Includes:
+# Application Configuration
+NODE_ENV=production
+FRONTEND_URL=http://localhost:8010
+```
 
-- **22 systems** across prod/dev/test environments
-- **50+ daily snapshots** with various compliance states
-- **Historical trends** for 3 systems over 7 days
-- **Diverse scenarios**: fully compliant, partial coverage, critical vulnerabilities, stale data, etc.
+**Note:** For local development (without Docker), see the main [README.md](README.md) for backend and frontend `.env` configuration.
 
-## Next Steps After Deployment:
+## Next Steps
 
-1. Access frontend at http://your-ip:8010
-2. Search for a system
-3. View the calendar heatmap
-4. Import your own CSV data via API
+1. ✅ Application is running at http://localhost:8010
+2. 📊 Import your compliance CSV data
+3. 🔍 Search for systems and view compliance status
+4. 📅 Explore calendar heatmaps for historical data
+5. 📈 Monitor compliance trends over time
+
+## Need Help?
+
+- See the full [README.md](README.md) for detailed documentation
+- Check [K3S-DEPLOYMENT.md](K3S-DEPLOYMENT.md) for Kubernetes deployment
+- Review API endpoints in the [README.md](README.md#-api-endpoints) section
 
 ---
 
-**Note**: Your existing nginx sites (cpuiit.com, tyrantshield.com) are separate and should not be affected by this deployment since we're using different ports (8010, 3001, 3307).
+**Built with:** NestJS • React • TypeScript • MariaDB • Docker

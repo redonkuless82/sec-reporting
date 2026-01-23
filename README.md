@@ -288,10 +288,10 @@ The application will be available at:
 
 ```bash
 # Copy and configure environment variables
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
+cp .env.example .env
+# Edit .env with your database credentials (optional - defaults are provided)
 
-# Start all services
+# Start all services (database will be automatically initialized)
 docker-compose up -d
 
 # View logs
@@ -300,6 +300,8 @@ docker-compose logs -f
 # Stop services
 docker-compose down
 ```
+
+**Note:** The database schema is automatically created when the container starts for the first time using the initialization script at [`docker/init-db.sql`](docker/init-db.sql).
 
 The application will be available at:
 - Frontend: http://localhost:8010
@@ -334,32 +336,45 @@ The application will be available at:
 
 ### Environment Variables
 
-#### Backend ([`backend/.env`](backend/.env.example))
+#### Docker Compose ([`.env`](.env.example))
+For Docker Compose deployment, create a `.env` file in the project root:
 ```env
+# Database Configuration
+DB_USER=compliance
+DB_PASSWORD=secure-password-change-me
+DB_NAME=compliance_tracker
+
+# Application Configuration
+NODE_ENV=production
+FRONTEND_URL=http://localhost:8010
+```
+
+#### Backend ([`backend/.env`](backend/.env.example))
+For local development:
+```env
+# Application Configuration
 NODE_ENV=development
 PORT=3000
+
+# Frontend URL for CORS
+FRONTEND_URL=http://localhost:5173
+
+# Database Configuration
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=password
 DB_NAME=compliance_tracker
-FRONTEND_URL=http://localhost:5173
 ```
 
 #### Frontend ([`frontend/.env`](frontend/.env.example))
+For local development:
 ```env
+# API Configuration
 VITE_API_URL=http://localhost:3000
 ```
 
-#### Docker Compose
-Create a `.env` file in the project root:
-```env
-DB_USER=compliance
-DB_PASSWORD=secure-password
-DB_NAME=compliance_tracker
-NODE_ENV=production
-FRONTEND_URL=http://localhost
-```
+**Note:** For Docker Compose, you only need to configure the root `.env` file. The backend and frontend containers will use the appropriate settings automatically.
 
 ## 📝 CSV Import Process
 
