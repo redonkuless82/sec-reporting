@@ -1,6 +1,9 @@
 -- Database initialization script for Docker
 -- This script creates the database schema automatically when the container starts
 
+-- Use the database created by MYSQL_DATABASE environment variable
+USE compliance_tracker;
+
 -- Create systems table
 CREATE TABLE IF NOT EXISTS `systems` (
   `id` int NOT NULL AUTO_INCREMENT,
