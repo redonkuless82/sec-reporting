@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: compliance-tracker-config
+  namespace: compliance-tracker
+data:
+  NODE_ENV: "production"
+  DB_HOST: "mariadb-service"
+  DB_PORT: "3306"
+  DB_NAME: "compliance_tracker"
+  DB_USER: "compliance"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: compliance-tracker-secret
+  namespace: compliance-tracker
+type: Opaque
+stringData:
+  DB_PASSWORD: "change-this-password"
+  MYSQL_ROOT_PASSWORD: "change-this-root-password"

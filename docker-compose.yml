@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # MariaDB Database
+  db:
+    image: mariadb:11
+    container_name: compliance-tracker-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-password}
+      MYSQL_DATABASE: ${DB_NAME:-compliance_tracker}
+      MYSQL_USER: ${DB_USER:-compliance}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "3308:3306"
+    networks:
+      - compliance-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NestJS Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: compliance-tracker-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-compliance}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      DB_NAME: ${DB_NAME:-compliance_tracker}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+    ports:
+      - "3002:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/uploads:/app/uploads
+    networks:
+      - compliance-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: compliance-tracker-frontend
+    restart: unless-stopped
+    ports:
+      - "8010:80"
+    depends_on:
+      - backend
+    networks:
+      - compliance-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  compliance-network:
+    driver: bridge

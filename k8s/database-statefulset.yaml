@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariadb
+  namespace: compliance-tracker
+spec:
+  serviceName: mariadb-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      containers:
+      - name: mariadb
+        image: mariadb:11
+        ports:
+        - containerPort: 3306
+          name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: compliance-tracker-secret
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: compliance-tracker-config
+              key: DB_NAME
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: compliance-tracker-config
+              key: DB_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: compliance-tracker-secret
+              key: DB_PASSWORD
+        volumeMounts:
+        - name: mariadb-storage
+          mountPath: /var/lib/mysql
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "mysqladmin ping -u root -p${MYSQL_ROOT_PASSWORD}"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "mysqladmin ping -u root -p${MYSQL_ROOT_PASSWORD}"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: mariadb-storage
+        persistentVolumeClaim:
+          claimName: mariadb-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-service
+  namespace: compliance-tracker
+spec:
+  selector:
+    app: mariadb
+  ports:
+  - port: 3306
+    targetPort: 3306
+  clusterIP: None  # Headless service for StatefulSet
