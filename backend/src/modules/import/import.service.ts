@@ -62,15 +62,23 @@ export class ImportService {
       throw new Error('Missing shortname in record');
     }
 
-    // Upsert system record
-    await this.systemRepository.upsert(
-      {
+    // Upsert system record - find or create
+    let system = await this.systemRepository.findOne({ where: { shortname } });
+    
+    if (!system) {
+      // Create new system
+      system = this.systemRepository.create({
         shortname,
         fullname: record.fullname || null,
         env: record.env || null,
-      },
-      ['shortname'],
-    );
+      });
+      await this.systemRepository.save(system);
+    } else {
+      // Update existing system
+      system.fullname = record.fullname || null;
+      system.env = record.env || null;
+      await this.systemRepository.save(system);
+    }
 
     // Create daily snapshot
     const snapshot = this.snapshotRepository.create({
