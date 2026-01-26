@@ -480,24 +480,28 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
                   </div>
                 </>
               )}
-              <div className="tooltip-divider"></div>
-              <div className="tooltip-section-title">Tool-Specific Reporting:</div>
-              <div className="tooltip-section">
-                <div className="tooltip-label">Rapid7:</div>
-                <div className="tooltip-value">{hoveredPoint.toolCompliance.r7}</div>
-              </div>
-              <div className="tooltip-section">
-                <div className="tooltip-label">Automox:</div>
-                <div className="tooltip-value">{hoveredPoint.toolCompliance.am}</div>
-              </div>
-              <div className="tooltip-section">
-                <div className="tooltip-label">Defender:</div>
-                <div className="tooltip-value">{hoveredPoint.toolCompliance.df}</div>
-              </div>
-              <div className="tooltip-section">
-                <div className="tooltip-label">Intune:</div>
-                <div className="tooltip-value">{hoveredPoint.toolCompliance.it}</div>
-              </div>
+              {hoveredPoint.toolCompliance && (
+                <>
+                  <div className="tooltip-divider"></div>
+                  <div className="tooltip-section-title">Tool-Specific Reporting:</div>
+                  <div className="tooltip-section">
+                    <div className="tooltip-label">Rapid7:</div>
+                    <div className="tooltip-value">{hoveredPoint.toolCompliance.r7}</div>
+                  </div>
+                  <div className="tooltip-section">
+                    <div className="tooltip-label">Automox:</div>
+                    <div className="tooltip-value">{hoveredPoint.toolCompliance.am}</div>
+                  </div>
+                  <div className="tooltip-section">
+                    <div className="tooltip-label">Defender:</div>
+                    <div className="tooltip-value">{hoveredPoint.toolCompliance.df}</div>
+                  </div>
+                  <div className="tooltip-section">
+                    <div className="tooltip-label">Intune:</div>
+                    <div className="tooltip-value">{hoveredPoint.toolCompliance.it}</div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -653,27 +657,29 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
             )}
           </div>
           
-          <div className="tool-compliance-breakdown">
-            <h4>Tool-Specific Reporting</h4>
-            <div className="tool-compliance-grid">
-              <div className="tool-compliance-item">
-                <span className="tool-name">Rapid7:</span>
-                <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.r7} systems</span>
-              </div>
-              <div className="tool-compliance-item">
-                <span className="tool-name">Automox:</span>
-                <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.am} systems</span>
-              </div>
-              <div className="tool-compliance-item">
-                <span className="tool-name">Defender:</span>
-                <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.df} systems</span>
-              </div>
-              <div className="tool-compliance-item">
-                <span className="tool-name">Intune:</span>
-                <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.it} systems</span>
+          {trendData[trendData.length - 1].toolCompliance && (
+            <div className="tool-compliance-breakdown">
+              <h4>Tool-Specific Reporting</h4>
+              <div className="tool-compliance-grid">
+                <div className="tool-compliance-item">
+                  <span className="tool-name">Rapid7:</span>
+                  <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.r7} systems</span>
+                </div>
+                <div className="tool-compliance-item">
+                  <span className="tool-name">Automox:</span>
+                  <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.am} systems</span>
+                </div>
+                <div className="tool-compliance-item">
+                  <span className="tool-name">Defender:</span>
+                  <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.df} systems</span>
+                </div>
+                <div className="tool-compliance-item">
+                  <span className="tool-name">Intune:</span>
+                  <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.it} systems</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
