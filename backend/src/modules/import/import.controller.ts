@@ -24,6 +24,9 @@ export class ImportController {
         }
         cb(null, true);
       },
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB limit
+      },
     }),
   )
   async uploadCsv(@UploadedFile() file: Express.Multer.File) {
