@@ -3,7 +3,7 @@ import { systemsApi } from '../services/api';
 import SystemDetails from '../components/SystemDetails';
 import ToolCalendars from '../components/ToolCalendars';
 import CsvImport from '../components/CsvImport';
-import ComplianceDashboard from '../components/ComplianceDashboard';
+import HealthDashboard from '../components/HealthDashboard';
 import type { System, MissingSystem } from '../types';
 
 export default function Home() {
@@ -124,7 +124,7 @@ export default function Home() {
       <header className="app-header">
         <div className="header-content">
           <div>
-            <h1>Compliance Tracking Dashboard</h1>
+            <h1>Tooling Health Dashboard</h1>
             <p className="subtitle">Monitor ~{totalSystems} systems across monitoring tools</p>
           </div>
           <CsvImport />
@@ -231,11 +231,11 @@ export default function Home() {
             </>
           ) : (
             <div className="welcome-panel">
-              <h2>Welcome to the Compliance Tracker</h2>
-              <p>Select a system from the list to view its compliance history and tool reporting status</p>
+              <h2>Welcome to the Tooling Health Tracker</h2>
+              <p>Select a system from the list to view its health history and tool reporting status</p>
               
-              {/* Global Compliance Dashboard */}
-              <ComplianceDashboard days={30} />
+              {/* Global Health Dashboard */}
+              <HealthDashboard days={30} />
               
               <div className="dashboard-sections">
                 {/* New Systems Today Section */}
@@ -313,12 +313,12 @@ export default function Home() {
                 {/* Info Cards */}
                 <div className="info-cards">
                   <div className="info-card">
-                    <h3>📊 Track Compliance</h3>
-                    <p>Monitor which systems are reporting to compliance tools</p>
+                    <h3>📊 Track Health</h3>
+                    <p>Monitor which systems are reporting to security tools</p>
                   </div>
                   <div className="info-card">
                     <h3>📅 Historical View</h3>
-                    <p>View daily snapshots across 5 monitoring tools</p>
+                    <p>View daily snapshots across monitoring tools</p>
                   </div>
                   <div className="info-card">
                     <h3>🔍 Identify Gaps</h3>

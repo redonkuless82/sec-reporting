@@ -1,25 +1,25 @@
 import { useState, useEffect } from 'react';
 import { systemsApi } from '../services/api';
-import type { ComplianceTrendingResponse, ComplianceTrendDataPoint } from '../types';
-import ComplianceDrillDownModal from './ComplianceDrillDownModal';
+import type { HealthTrendingResponse, HealthTrendDataPoint } from '../types';
+import HealthDrillDownModal from './HealthDrillDownModal';
 import './ComplianceDashboard.css';
 
-interface ComplianceDashboardProps {
+interface HealthDashboardProps {
   days?: number;
 }
 
-export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardProps) {
-  const [data, setData] = useState<ComplianceTrendingResponse | null>(null);
+export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
+  const [data, setData] = useState<HealthTrendingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(days);
   const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
   const [environments, setEnvironments] = useState<string[]>([]);
   const [environmentsLoading, setEnvironmentsLoading] = useState(true);
-  const [hoveredPoint, setHoveredPoint] = useState<ComplianceTrendDataPoint | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<HealthTrendDataPoint | null>(null);
   const [hoveredPosition, setHoveredPosition] = useState<{ x: number; y: number } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalCategory, setModalCategory] = useState<'fully' | 'partially' | 'non' | 'new'>('fully');
+  const [modalCategory, setModalCategory] = useState<'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new'>('fully');
   const [modalCategoryLabel, setModalCategoryLabel] = useState('');
   const [modalDate, setModalDate] = useState('');
 
@@ -49,20 +49,20 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
     setLoading(true);
     setError(null);
     try {
-      const response = await systemsApi.getComplianceTrending(
+      const response = await systemsApi.getHealthTrending(
         selectedPeriod,
         selectedEnvironment || undefined
       );
       setData(response);
     } catch (err) {
-      console.error('Error loading compliance trending data:', err);
-      setError('Failed to load compliance trending data');
+      console.error('Error loading health trending data:', err);
+      setError('Failed to load health trending data');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleMouseMove = (point: ComplianceTrendDataPoint, event: React.MouseEvent) => {
+  const handleMouseMove = (point: HealthTrendDataPoint, event: React.MouseEvent) => {
     setHoveredPoint(point);
     setHoveredPosition({ x: event.clientX, y: event.clientY });
   };
@@ -73,7 +73,7 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
   };
 
   const handleCategoryClick = (
-    category: 'fully' | 'partially' | 'non' | 'new',
+    category: 'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new',
     label: string,
     date: string
   ) => {
@@ -90,7 +90,7 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
   if (loading) {
     return (
       <div className="compliance-dashboard loading">
-        <div className="loading-spinner">Loading compliance data...</div>
+        <div className="loading-spinner">Loading health data...</div>
       </div>
     );
   }
@@ -113,35 +113,37 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
   const innerHeight = chartHeight - padding.top - padding.bottom;
 
   const maxSystems = Math.max(...trendData.map(d => d.totalSystems), 1);
-  const maxCompliance = 100;
+  const maxHealth = 100;
 
   // Create scales
   const xScale = (index: number) => (index / (trendData.length - 1 || 1)) * innerWidth;
   const yScaleSystems = (value: number) => innerHeight - (value / maxSystems) * innerHeight;
-  const yScaleCompliance = (value: number) => innerHeight - (value / maxCompliance) * innerHeight;
+  const yScaleHealth = (value: number) => innerHeight - (value / maxHealth) * innerHeight;
 
-  // Generate path for compliance rate line
-  const compliancePath = trendData
+  // Generate path for health rate line
+  const healthPath = trendData
     .map((d, i) => {
       const x = xScale(i);
-      const y = yScaleCompliance(d.complianceRate);
+      const y = yScaleHealth(d.healthRate);
       return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
     })
     .join(' ');
 
   // Generate stacked area paths
   const generateStackedPath = (
-    dataKey: 'fullyCompliant' | 'partiallyCompliant' | 'nonCompliant',
-    baseKey?: 'fullyCompliant' | 'partiallyCompliant'
+    dataKey: 'fullyHealthy' | 'partiallyHealthy' | 'unhealthy' | 'inactive',
+    baseKey?: 'fullyHealthy' | 'partiallyHealthy' | 'unhealthy'
   ) => {
     const forwardPath = trendData
       .map((d, i) => {
         const x = xScale(i);
         let baseValue = 0;
-        if (baseKey === 'fullyCompliant') {
-          baseValue = d.fullyCompliant;
-        } else if (baseKey === 'partiallyCompliant') {
-          baseValue = d.fullyCompliant + d.partiallyCompliant;
+        if (baseKey === 'fullyHealthy') {
+          baseValue = d.fullyHealthy;
+        } else if (baseKey === 'partiallyHealthy') {
+          baseValue = d.fullyHealthy + d.partiallyHealthy;
+        } else if (baseKey === 'unhealthy') {
+          baseValue = d.fullyHealthy + d.partiallyHealthy + d.unhealthy;
         }
         const y = yScaleSystems(baseValue + d[dataKey]);
         return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
@@ -155,10 +157,12 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
         const index = trendData.length - 1 - i;
         const x = xScale(index);
         let baseValue = 0;
-        if (baseKey === 'fullyCompliant') {
-          baseValue = d.fullyCompliant;
-        } else if (baseKey === 'partiallyCompliant') {
-          baseValue = d.fullyCompliant + d.partiallyCompliant;
+        if (baseKey === 'fullyHealthy') {
+          baseValue = d.fullyHealthy;
+        } else if (baseKey === 'partiallyHealthy') {
+          baseValue = d.fullyHealthy + d.partiallyHealthy;
+        } else if (baseKey === 'unhealthy') {
+          baseValue = d.fullyHealthy + d.partiallyHealthy + d.unhealthy;
         }
         const y = yScaleSystems(baseValue);
         return `L ${x},${y}`;
@@ -172,8 +176,8 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
     <div className="compliance-dashboard">
       <div className="dashboard-header">
         <div className="header-left">
-          <h2>📊 Global Compliance Trending</h2>
-          <p className="subtitle">Track compliance progress across all systems</p>
+          <h2>📊 Global Health Trending</h2>
+          <p className="subtitle">Track tooling health progress across all systems</p>
         </div>
         <div className="header-controls">
           <div className="environment-selector">
@@ -250,12 +254,12 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
         <div className="summary-card">
           <div className="card-icon">✅</div>
           <div className="card-content">
-            <div className="card-label">Compliance Improvement</div>
-            <div className={`card-value ${summary.complianceImprovement >= 0 ? 'positive' : 'negative'}`}>
-              {summary.complianceImprovement >= 0 ? '+' : ''}{summary.complianceImprovement.toFixed(1)}%
+            <div className="card-label">Health Improvement</div>
+            <div className={`card-value ${summary.healthImprovement >= 0 ? 'positive' : 'negative'}`}>
+              {summary.healthImprovement >= 0 ? '+' : ''}{summary.healthImprovement.toFixed(1)}%
             </div>
             <div className="card-description">
-              {summary.complianceImprovement >= 0 ? 'Improving' : 'Declining'}
+              {summary.healthImprovement >= 0 ? 'Improving' : 'Declining'}
             </div>
           </div>
         </div>
@@ -263,8 +267,8 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
         <div className="summary-card">
           <div className="card-icon">🎯</div>
           <div className="card-content">
-            <div className="card-label">Systems Gained Compliance</div>
-            <div className="card-value positive">{summary.systemsGainedCompliance}</div>
+            <div className="card-label">Systems Gained Health</div>
+            <div className="card-value positive">{summary.systemsGainedHealth}</div>
             <div className="card-description">Remediated systems</div>
           </div>
         </div>
@@ -272,8 +276,8 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
         <div className="summary-card">
           <div className="card-icon">⚠️</div>
           <div className="card-content">
-            <div className="card-label">Systems Lost Compliance</div>
-            <div className="card-value negative">{summary.systemsLostCompliance}</div>
+            <div className="card-label">Systems Lost Health</div>
+            <div className="card-value negative">{summary.systemsLostHealth}</div>
             <div className="card-description">Need attention</div>
           </div>
         </div>
@@ -281,22 +285,27 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
 
       {/* Legend */}
       <div className="chart-legend">
-        <div className="legend-title">Compliance Status Legend:</div>
+        <div className="legend-title">Health Status Legend:</div>
         <div className="legend-items">
           <div className="legend-item">
             <div className="legend-color fully-compliant"></div>
-            <span className="legend-label">Fully Compliant</span>
-            <span className="legend-description">(All 5 tools: Rapid7, Automox, Defender, Intune, VMware)</span>
+            <span className="legend-label">Fully Healthy</span>
+            <span className="legend-description">(Active in Intune + All 3 tools: Rapid7, Automox, Defender)</span>
           </div>
           <div className="legend-item">
             <div className="legend-color partially-compliant"></div>
-            <span className="legend-label">Partially Compliant</span>
-            <span className="legend-description">(3-4 tools reporting)</span>
+            <span className="legend-label">Partially Healthy</span>
+            <span className="legend-description">(Active in Intune + 1-2 tools reporting)</span>
           </div>
           <div className="legend-item">
             <div className="legend-color non-compliant"></div>
-            <span className="legend-label">Non-Compliant</span>
-            <span className="legend-description">(0-2 tools reporting)</span>
+            <span className="legend-label">Unhealthy</span>
+            <span className="legend-description">(Active in Intune but no tools reporting)</span>
+          </div>
+          <div className="legend-item">
+            <div className="legend-color inactive-systems"></div>
+            <span className="legend-label">Inactive</span>
+            <span className="legend-description">(Not seen in Intune for 15+ days)</span>
           </div>
           <div className="legend-item">
             <div className="legend-color new-systems"></div>
@@ -336,24 +345,29 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
 
             {/* Stacked areas */}
             <path
-              d={generateStackedPath('fullyCompliant')}
+              d={generateStackedPath('fullyHealthy')}
               fill="rgba(76, 175, 80, 0.6)"
               className="area-fully-compliant"
             />
             <path
-              d={generateStackedPath('partiallyCompliant', 'fullyCompliant')}
+              d={generateStackedPath('partiallyHealthy', 'fullyHealthy')}
               fill="rgba(255, 193, 7, 0.6)"
               className="area-partially-compliant"
             />
             <path
-              d={generateStackedPath('nonCompliant', 'partiallyCompliant')}
+              d={generateStackedPath('unhealthy', 'partiallyHealthy')}
               fill="rgba(244, 67, 54, 0.6)"
               className="area-non-compliant"
             />
-
-            {/* Compliance rate line */}
             <path
-              d={compliancePath}
+              d={generateStackedPath('inactive', 'unhealthy')}
+              fill="rgba(158, 158, 158, 0.6)"
+              className="area-inactive-systems"
+            />
+
+            {/* Health rate line */}
+            <path
+              d={healthPath}
               fill="none"
               stroke="#2196F3"
               strokeWidth="3"
@@ -365,7 +379,7 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
               <circle
                 key={i}
                 cx={xScale(i)}
-                cy={yScaleCompliance(point.complianceRate)}
+                cy={yScaleHealth(point.healthRate)}
                 r="4"
                 fill="#2196F3"
                 stroke="white"
@@ -434,21 +448,25 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
                 <div className="tooltip-value">{hoveredPoint.totalSystems}</div>
               </div>
               <div className="tooltip-section">
-                <div className="tooltip-label">Compliance Rate:</div>
-                <div className="tooltip-value">{hoveredPoint.complianceRate.toFixed(1)}%</div>
+                <div className="tooltip-label">Health Rate:</div>
+                <div className="tooltip-value">{hoveredPoint.healthRate.toFixed(1)}%</div>
               </div>
               <div className="tooltip-divider"></div>
               <div className="tooltip-section">
-                <div className="tooltip-label fully-compliant">✅ Fully Compliant:</div>
-                <div className="tooltip-value">{hoveredPoint.fullyCompliant}</div>
+                <div className="tooltip-label fully-compliant">✅ Fully Healthy:</div>
+                <div className="tooltip-value">{hoveredPoint.fullyHealthy}</div>
               </div>
               <div className="tooltip-section">
-                <div className="tooltip-label partially-compliant">⚠️ Partially Compliant:</div>
-                <div className="tooltip-value">{hoveredPoint.partiallyCompliant}</div>
+                <div className="tooltip-label partially-compliant">⚠️ Partially Healthy:</div>
+                <div className="tooltip-value">{hoveredPoint.partiallyHealthy}</div>
               </div>
               <div className="tooltip-section">
-                <div className="tooltip-label non-compliant">❌ Non-Compliant:</div>
-                <div className="tooltip-value">{hoveredPoint.nonCompliant}</div>
+                <div className="tooltip-label non-compliant">❌ Unhealthy:</div>
+                <div className="tooltip-value">{hoveredPoint.unhealthy}</div>
+              </div>
+              <div className="tooltip-section">
+                <div className="tooltip-label inactive-systems">⏸️ Inactive:</div>
+                <div className="tooltip-value">{hoveredPoint.inactive}</div>
               </div>
               {hoveredPoint.newSystems > 0 && (
                 <>
@@ -463,7 +481,7 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
                 </>
               )}
               <div className="tooltip-divider"></div>
-              <div className="tooltip-section-title">Tool-Specific Compliance:</div>
+              <div className="tooltip-section-title">Tool-Specific Reporting:</div>
               <div className="tooltip-section">
                 <div className="tooltip-label">Rapid7:</div>
                 <div className="tooltip-value">{hoveredPoint.toolCompliance.r7}</div>
@@ -480,10 +498,6 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
                 <div className="tooltip-label">Intune:</div>
                 <div className="tooltip-value">{hoveredPoint.toolCompliance.it}</div>
               </div>
-              <div className="tooltip-section">
-                <div className="tooltip-label">VMware:</div>
-                <div className="tooltip-value">{hoveredPoint.toolCompliance.vm}</div>
-              </div>
             </div>
           </div>
         )}
@@ -492,7 +506,7 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
       {/* Current Day Details */}
       {trendData.length > 0 && (
         <div className="current-day-details">
-          <h3>📅 Today's Compliance Snapshot</h3>
+          <h3>📅 Today's Health Snapshot</h3>
           <div className="current-day-grid">
             <div className="current-day-card">
               <div className="current-day-label">Date</div>
@@ -512,15 +526,15 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
             </div>
             
             <div className="current-day-card">
-              <div className="current-day-label">Compliance Rate</div>
-              <div className="current-day-value">{trendData[trendData.length - 1].complianceRate.toFixed(1)}%</div>
+              <div className="current-day-label">Health Rate</div>
+              <div className="current-day-value">{trendData[trendData.length - 1].healthRate.toFixed(1)}%</div>
             </div>
             
             <div
               className="current-day-card fully-compliant-card clickable"
               onClick={() => handleCategoryClick(
                 'fully',
-                '✅ Fully Compliant Systems',
+                '✅ Fully Healthy Systems',
                 trendData[trendData.length - 1].date
               )}
               role="button"
@@ -529,22 +543,22 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
                 if (e.key === 'Enter' || e.key === ' ') {
                   handleCategoryClick(
                     'fully',
-                    '✅ Fully Compliant Systems',
+                    '✅ Fully Healthy Systems',
                     trendData[trendData.length - 1].date
                   );
                 }
               }}
             >
-              <div className="current-day-label">✅ Fully Compliant</div>
-              <div className="current-day-value">{trendData[trendData.length - 1].fullyCompliant}</div>
-              <div className="current-day-description">All 5 tools reporting</div>
+              <div className="current-day-label">✅ Fully Healthy</div>
+              <div className="current-day-value">{trendData[trendData.length - 1].fullyHealthy}</div>
+              <div className="current-day-description">All 3 tools reporting</div>
             </div>
             
             <div
               className="current-day-card partially-compliant-card clickable"
               onClick={() => handleCategoryClick(
                 'partially',
-                '⚠️ Partially Compliant Systems',
+                '⚠️ Partially Healthy Systems',
                 trendData[trendData.length - 1].date
               )}
               role="button"
@@ -553,22 +567,22 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
                 if (e.key === 'Enter' || e.key === ' ') {
                   handleCategoryClick(
                     'partially',
-                    '⚠️ Partially Compliant Systems',
+                    '⚠️ Partially Healthy Systems',
                     trendData[trendData.length - 1].date
                   );
                 }
               }}
             >
-              <div className="current-day-label">⚠️ Partially Compliant</div>
-              <div className="current-day-value">{trendData[trendData.length - 1].partiallyCompliant}</div>
-              <div className="current-day-description">3-4 tools reporting</div>
+              <div className="current-day-label">⚠️ Partially Healthy</div>
+              <div className="current-day-value">{trendData[trendData.length - 1].partiallyHealthy}</div>
+              <div className="current-day-description">1-2 tools reporting</div>
             </div>
             
             <div
               className="current-day-card non-compliant-card clickable"
               onClick={() => handleCategoryClick(
-                'non',
-                '❌ Non-Compliant Systems',
+                'unhealthy',
+                '❌ Unhealthy Systems',
                 trendData[trendData.length - 1].date
               )}
               role="button"
@@ -576,16 +590,40 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
               onKeyPress={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   handleCategoryClick(
-                    'non',
-                    '❌ Non-Compliant Systems',
+                    'unhealthy',
+                    '❌ Unhealthy Systems',
                     trendData[trendData.length - 1].date
                   );
                 }
               }}
             >
-              <div className="current-day-label">❌ Non-Compliant</div>
-              <div className="current-day-value">{trendData[trendData.length - 1].nonCompliant}</div>
-              <div className="current-day-description">0-2 tools reporting</div>
+              <div className="current-day-label">❌ Unhealthy</div>
+              <div className="current-day-value">{trendData[trendData.length - 1].unhealthy}</div>
+              <div className="current-day-description">No tools reporting</div>
+            </div>
+
+            <div
+              className="current-day-card inactive-systems-card clickable"
+              onClick={() => handleCategoryClick(
+                'inactive',
+                '⏸️ Inactive Systems',
+                trendData[trendData.length - 1].date
+              )}
+              role="button"
+              tabIndex={0}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  handleCategoryClick(
+                    'inactive',
+                    '⏸️ Inactive Systems',
+                    trendData[trendData.length - 1].date
+                  );
+                }
+              }}
+            >
+              <div className="current-day-label">⏸️ Inactive</div>
+              <div className="current-day-value">{trendData[trendData.length - 1].inactive}</div>
+              <div className="current-day-description">Not in Intune 15+ days</div>
             </div>
             
             {trendData[trendData.length - 1].newSystems > 0 && (
@@ -616,7 +654,7 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
           </div>
           
           <div className="tool-compliance-breakdown">
-            <h4>Tool-Specific Compliance</h4>
+            <h4>Tool-Specific Reporting</h4>
             <div className="tool-compliance-grid">
               <div className="tool-compliance-item">
                 <span className="tool-name">Rapid7:</span>
@@ -634,10 +672,6 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
                 <span className="tool-name">Intune:</span>
                 <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.it} systems</span>
               </div>
-              <div className="tool-compliance-item">
-                <span className="tool-name">VMware:</span>
-                <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.vm} systems</span>
-              </div>
             </div>
           </div>
         </div>
@@ -652,9 +686,9 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
             <div className="insight-content">
               <div className="insight-title">What This Shows</div>
               <div className="insight-text">
-                This dashboard tracks compliance across all systems over time. The stacked area chart shows 
-                the distribution of systems by compliance level, while the blue line shows the overall 
-                compliance rate percentage.
+                This dashboard tracks tooling health across all systems over time. The stacked area chart shows 
+                the distribution of systems by health level, while the blue line shows the overall 
+                health rate percentage.
               </div>
             </div>
           </div>
@@ -664,11 +698,13 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
             <div className="insight-content">
               <div className="insight-title">Understanding the Data</div>
               <div className="insight-text">
-                <strong>Fully Compliant:</strong> Systems reporting to all 5 tools (Rapid7, Automox, Defender, Intune, VMware).
+                <strong>Fully Healthy:</strong> Active in Intune (last 15 days) + all 3 tools (Rapid7, Automox, Defender).
                 <br />
-                <strong>Partially Compliant:</strong> Systems reporting to 3-4 tools.
+                <strong>Partially Healthy:</strong> Active in Intune + 1-2 tools reporting.
                 <br />
-                <strong>Non-Compliant:</strong> Systems reporting to 0-2 tools - these need immediate attention.
+                <strong>Unhealthy:</strong> Active in Intune but no tools reporting - needs immediate attention.
+                <br />
+                <strong>Inactive:</strong> Not seen in Intune for 15+ days.
               </div>
             </div>
           </div>
@@ -682,9 +718,9 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
                 <br />
                 • <strong>New systems</strong> being discovered (may not have tooling yet)
                 <br />
-                • <strong>Existing systems</strong> gaining compliance (remediation success)
+                • <strong>Existing systems</strong> gaining health (remediation success)
                 <br />
-                • <strong>Existing systems</strong> losing compliance (need investigation)
+                • <strong>Existing systems</strong> losing health (need investigation)
               </div>
             </div>
           </div>
@@ -694,14 +730,14 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
             <div className="insight-content">
               <div className="insight-title">Action Items</div>
               <div className="insight-text">
-                {summary.systemsLostCompliance > 0 && (
+                {summary.systemsLostHealth > 0 && (
                   <div className="action-item warning">
-                    ⚠️ {summary.systemsLostCompliance} system(s) lost compliance - investigate immediately
+                    ⚠️ {summary.systemsLostHealth} system(s) lost health - investigate immediately
                   </div>
                 )}
-                {summary.systemsGainedCompliance > 0 && (
+                {summary.systemsGainedHealth > 0 && (
                   <div className="action-item success">
-                    ✅ {summary.systemsGainedCompliance} system(s) gained compliance - great progress!
+                    ✅ {summary.systemsGainedHealth} system(s) gained health - great progress!
                   </div>
                 )}
                 {summary.newSystemsDiscovered > 0 && (
@@ -716,7 +752,7 @@ export default function ComplianceDashboard({ days = 30 }: ComplianceDashboardPr
       </div>
 
       {/* Drill-Down Modal */}
-      <ComplianceDrillDownModal
+      <HealthDrillDownModal
         isOpen={modalOpen}
         onClose={handleCloseModal}
         date={modalDate}

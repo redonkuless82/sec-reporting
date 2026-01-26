@@ -6,12 +6,66 @@ import { DailySnapshot } from '../../database/entities/daily-snapshot.entity';
 
 @Injectable()
 export class SystemsService {
+  // Intune inactivity threshold in days
+  private readonly INTUNE_INACTIVE_DAYS = 15;
+
   constructor(
     @InjectRepository(System)
     private systemRepository: Repository<System>,
     @InjectRepository(DailySnapshot)
     private snapshotRepository: Repository<DailySnapshot>,
   ) {}
+
+  /**
+   * Check if a system is active based on Intune presence
+   * A system is active if it has been seen in Intune within the last 15 days
+   */
+  private isSystemActive(snapshot: DailySnapshot, referenceDate: Date): boolean {
+    if (!snapshot.itFound) {
+      return false; // Not in Intune = inactive
+    }
+
+    // Check if Intune lag days is within threshold
+    if (snapshot.itLagDays !== null && snapshot.itLagDays !== undefined) {
+      return snapshot.itLagDays <= this.INTUNE_INACTIVE_DAYS;
+    }
+
+    // If no lag data, assume active if found in Intune
+    return true;
+  }
+
+  /**
+   * Calculate health status for a system
+   * Health is based on: Rapid7, Automox, and Defender (VMware excluded)
+   * System must be active in Intune (last 15 days) to be considered
+   *
+   * Returns:
+   * - 'fully': All 3 tools (R7 + AM + DF) present
+   * - 'partially': 1-2 tools present
+   * - 'unhealthy': 0 tools present (but in Intune)
+   * - 'inactive': Not in Intune or Intune lag > 15 days
+   */
+  private calculateSystemHealth(snapshot: DailySnapshot, referenceDate: Date): 'fully' | 'partially' | 'unhealthy' | 'inactive' {
+    // First check if system is active in Intune
+    if (!this.isSystemActive(snapshot, referenceDate)) {
+      return 'inactive';
+    }
+
+    // Count health tools (R7, AM, DF - VMware excluded)
+    const healthTools = [
+      snapshot.r7Found,
+      snapshot.amFound,
+      snapshot.dfFound,
+    ].filter(Boolean).length;
+
+    if (healthTools === 3) {
+      return 'fully'; // Fully healthy: All 3 tools
+    } else if (healthTools >= 1) {
+      return 'partially'; // Partially healthy: 1-2 tools
+    } else {
+      return 'unhealthy'; // Unhealthy: In Intune but no tools
+    }
+  }
 
   async findAll(search?: string, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
@@ -93,7 +147,7 @@ export class SystemsService {
       .orderBy('snapshot.importDate', 'ASC')
       .getMany();
 
-    // Transform data for calendar heatmap
+    // Transform data for calendar heatmap (VMware excluded from health tools)
     const calendarData = snapshots.map((snapshot) => ({
       date: snapshot.importDate,
       tools: {
@@ -101,7 +155,6 @@ export class SystemsService {
         am: snapshot.amFound,
         df: snapshot.dfFound,
         it: snapshot.itFound,
-        vm: snapshot.vmFound,
       },
       recentScans: {
         r7: snapshot.recentR7Scan,
@@ -149,15 +202,29 @@ export class SystemsService {
   }
 
   async getNewSystemsToday() {
-    // Get today's date at midnight
-    const today = new Date();
+    // Get the latest import date from the database (not current date)
+    const latestImportDate = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('MAX(snapshot.importDate)', 'maxDate')
+      .getRawOne();
+
+    if (!latestImportDate?.maxDate) {
+      return {
+        count: 0,
+        systems: [],
+        date: null,
+      };
+    }
+
+    // Use the latest import date as "today"
+    const today = new Date(latestImportDate.maxDate);
     today.setHours(0, 0, 0, 0);
     
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Find systems that appeared in snapshots for the first time today
-    // Get all shortnames that have snapshots today
+    // Find systems that appeared in snapshots for the first time on the latest import date
+    // Get all shortnames that have snapshots on the latest import date
     const systemsWithSnapshotsToday = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
@@ -175,7 +242,7 @@ export class SystemsService {
 
     const shortnamesWithSnapshotsToday = systemsWithSnapshotsToday.map(s => s.shortname);
 
-    // For each system, check if it had any snapshots before today
+    // For each system, check if it had any snapshots before the latest import date
     const newSystems = [];
     for (const shortname of shortnamesWithSnapshotsToday) {
       const previousSnapshot = await this.snapshotRepository
@@ -185,7 +252,7 @@ export class SystemsService {
         .limit(1)
         .getOne();
 
-      // If no previous snapshot exists, this is a new system
+      // If no previous snapshot exists, this is a new system (first appearance)
       if (!previousSnapshot) {
         const system = await this.systemRepository.findOne({
           where: { shortname },
@@ -282,7 +349,7 @@ export class SystemsService {
     };
   }
 
-  async getComplianceTrending(days: number = 30, env?: string) {
+  async getHealthTrending(days: number = 30, env?: string) {
     // Get the date range
     const endDate = new Date();
     endDate.setHours(23, 59, 59, 999);
@@ -313,10 +380,10 @@ export class SystemsService {
         summary: {
           totalSystemsNow: 0,
           totalSystemsStart: 0,
-          complianceImprovement: 0,
+          healthImprovement: 0,
           newSystemsDiscovered: 0,
-          systemsLostCompliance: 0,
-          systemsGainedCompliance: 0,
+          systemsLostHealth: 0,
+          systemsGainedHealth: 0,
         },
       };
     }
@@ -339,8 +406,8 @@ export class SystemsService {
     const trendData = [];
     const dates = Array.from(snapshotsByDate.keys()).sort();
     
-    // Track system compliance status over time
-    const systemComplianceHistory = new Map<string, { firstSeen: string; compliance: Map<string, boolean> }>();
+    // Track system health status over time
+    const systemHealthHistory = new Map<string, { firstSeen: string; health: Map<string, boolean> }>();
 
     for (const date of dates) {
       const daySnapshots = snapshotsByDate.get(date)!;
@@ -354,87 +421,93 @@ export class SystemsService {
         }
       });
 
-      // Calculate compliance metrics for this day using unique systems only
-      let fullyCompliant = 0; // All 5 tools found
-      let partiallyCompliant = 0; // 3-4 tools found
-      let nonCompliant = 0; // 0-2 tools found
+      // Calculate health metrics for this day using unique systems only
+      let fullyHealthy = 0; // All 3 tools (R7 + AM + DF) + active Intune
+      let partiallyHealthy = 0; // 1-2 tools + active Intune
+      let unhealthy = 0; // 0 tools but active Intune
+      let inactive = 0; // Not in Intune or Intune lag > 15 days
       let newSystems = 0;
       let existingSystems = 0;
 
-      const toolCompliance = {
+      // Track tool-specific health (VMware excluded)
+      const toolHealth = {
         r7: 0,
         am: 0,
         df: 0,
         it: 0,
-        vm: 0,
       };
+
+      const referenceDate = new Date(date);
 
       latestSnapshotPerSystem.forEach((snapshot) => {
         const shortname = snapshot.shortname;
-        const toolsFound = [
-          snapshot.r7Found,
-          snapshot.amFound,
-          snapshot.dfFound,
-          snapshot.itFound,
-          snapshot.vmFound,
-        ].filter(Boolean).length;
+        
+        // Calculate health status using helper function
+        const healthStatus = this.calculateSystemHealth(snapshot, referenceDate);
+        
+        // Categorize health level
+        if (healthStatus === 'fully') {
+          fullyHealthy++;
+        } else if (healthStatus === 'partially') {
+          partiallyHealthy++;
+        } else if (healthStatus === 'unhealthy') {
+          unhealthy++;
+        } else if (healthStatus === 'inactive') {
+          inactive++;
+        }
 
-        // Track tool-specific compliance
-        if (snapshot.r7Found) toolCompliance.r7++;
-        if (snapshot.amFound) toolCompliance.am++;
-        if (snapshot.dfFound) toolCompliance.df++;
-        if (snapshot.itFound) toolCompliance.it++;
-        if (snapshot.vmFound) toolCompliance.vm++;
-
-        // Categorize compliance level
-        if (toolsFound === 5) {
-          fullyCompliant++;
-        } else if (toolsFound >= 3) {
-          partiallyCompliant++;
-        } else {
-          nonCompliant++;
+        // Track tool-specific health (only for active systems)
+        if (healthStatus !== 'inactive') {
+          if (snapshot.r7Found) toolHealth.r7++;
+          if (snapshot.amFound) toolHealth.am++;
+          if (snapshot.dfFound) toolHealth.df++;
+          if (snapshot.itFound) toolHealth.it++;
         }
 
         // Track if this is a new system
-        if (!systemComplianceHistory.has(shortname)) {
+        if (!systemHealthHistory.has(shortname)) {
           newSystems++;
-          systemComplianceHistory.set(shortname, {
+          systemHealthHistory.set(shortname, {
             firstSeen: date,
-            compliance: new Map([
+            health: new Map([
               ['r7', snapshot.r7Found === 1],
               ['am', snapshot.amFound === 1],
               ['df', snapshot.dfFound === 1],
               ['it', snapshot.itFound === 1],
-              ['vm', snapshot.vmFound === 1],
             ]),
           });
         } else {
           existingSystems++;
-          // Update compliance status
-          const history = systemComplianceHistory.get(shortname)!;
-          history.compliance.set('r7', snapshot.r7Found === 1);
-          history.compliance.set('am', snapshot.amFound === 1);
-          history.compliance.set('df', snapshot.dfFound === 1);
-          history.compliance.set('it', snapshot.itFound === 1);
-          history.compliance.set('vm', snapshot.vmFound === 1);
+          // Update health status
+          const history = systemHealthHistory.get(shortname)!;
+          history.health.set('r7', snapshot.r7Found === 1);
+          history.health.set('am', snapshot.amFound === 1);
+          history.health.set('df', snapshot.dfFound === 1);
+          history.health.set('it', snapshot.itFound === 1);
         }
       });
 
+      // Total active systems (exclude inactive)
+      const activeSystems = fullyHealthy + partiallyHealthy + unhealthy;
       const totalSystems = latestSnapshotPerSystem.size;
-      const complianceRate = totalSystems > 0
-        ? ((fullyCompliant + partiallyCompliant) / totalSystems) * 100
+      
+      // Health rate based on active systems only
+      const healthRate = activeSystems > 0
+        ? ((fullyHealthy + partiallyHealthy) / activeSystems) * 100
         : 0;
 
       trendData.push({
         date,
         totalSystems,
-        fullyCompliant,
-        partiallyCompliant,
-        nonCompliant,
+        activeSystems,
+        fullyHealthy,
+        partiallyHealthy,
+        unhealthy,
+        inactive,
         newSystems,
         existingSystems,
-        complianceRate: Math.round(complianceRate * 100) / 100,
-        toolCompliance,
+        healthRate: Math.round(healthRate * 100) / 100,
+        toolHealth,
       });
     }
 
@@ -442,9 +515,9 @@ export class SystemsService {
     const firstDay = trendData[0];
     const lastDay = trendData[trendData.length - 1];
     
-    // Calculate systems that gained or lost compliance
-    let systemsGainedCompliance = 0;
-    let systemsLostCompliance = 0;
+    // Calculate systems that gained or lost health
+    let systemsGainedHealth = 0;
+    let systemsLostHealth = 0;
 
     if (trendData.length >= 2) {
       const firstDaySnapshots = snapshotsByDate.get(dates[0])!;
@@ -468,21 +541,35 @@ export class SystemsService {
         }
       });
       
-      const firstDayCompliance = new Map<string, number>();
+      const firstDayHealth = new Map<string, number>();
+      const firstDateRef = new Date(dates[0]);
       firstDayLatest.forEach((s) => {
-        const toolsFound = [s.r7Found, s.amFound, s.dfFound, s.itFound, s.vmFound].filter(Boolean).length;
-        firstDayCompliance.set(s.shortname, toolsFound);
+        const healthStatus = this.calculateSystemHealth(s, firstDateRef);
+        // Convert health status to numeric score for comparison
+        let score = 0;
+        if (healthStatus === 'fully') score = 3;
+        else if (healthStatus === 'partially') score = 2;
+        else if (healthStatus === 'unhealthy') score = 1;
+        else if (healthStatus === 'inactive') score = 0;
+        firstDayHealth.set(s.shortname, score);
       });
 
+      const lastDateRef = new Date(dates[dates.length - 1]);
       lastDayLatest.forEach((s) => {
-        const toolsFound = [s.r7Found, s.amFound, s.dfFound, s.itFound, s.vmFound].filter(Boolean).length;
-        const previousToolsFound = firstDayCompliance.get(s.shortname);
+        const healthStatus = this.calculateSystemHealth(s, lastDateRef);
+        let score = 0;
+        if (healthStatus === 'fully') score = 3;
+        else if (healthStatus === 'partially') score = 2;
+        else if (healthStatus === 'unhealthy') score = 1;
+        else if (healthStatus === 'inactive') score = 0;
         
-        if (previousToolsFound !== undefined) {
-          if (toolsFound > previousToolsFound) {
-            systemsGainedCompliance++;
-          } else if (toolsFound < previousToolsFound) {
-            systemsLostCompliance++;
+        const previousScore = firstDayHealth.get(s.shortname);
+        
+        if (previousScore !== undefined) {
+          if (score > previousScore) {
+            systemsGainedHealth++;
+          } else if (score < previousScore) {
+            systemsLostHealth++;
           }
         }
       });
@@ -491,10 +578,10 @@ export class SystemsService {
     const summary = {
       totalSystemsNow: lastDay.totalSystems,
       totalSystemsStart: firstDay.totalSystems,
-      complianceImprovement: Math.round((lastDay.complianceRate - firstDay.complianceRate) * 100) / 100,
+      healthImprovement: Math.round((lastDay.healthRate - firstDay.healthRate) * 100) / 100,
       newSystemsDiscovered: lastDay.totalSystems - firstDay.totalSystems,
-      systemsLostCompliance,
-      systemsGainedCompliance,
+      systemsLostHealth,
+      systemsGainedHealth,
     };
 
     return {
@@ -504,7 +591,7 @@ export class SystemsService {
     };
   }
 
-  async getSystemsByComplianceCategory(date: string, category: 'fully' | 'partially' | 'non' | 'new', env?: string) {
+  async getSystemsByHealthCategory(date: string, category: 'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new', env?: string) {
     // Parse the date and set to start of day
     const targetDate = new Date(date);
     targetDate.setHours(0, 0, 0, 0);
@@ -563,42 +650,39 @@ export class SystemsService {
         }
       }
     } else {
-      // Filter by compliance category
+      // Filter by health category using helper function
       filteredSnapshots = Array.from(latestSnapshotPerSystem.values()).filter((snapshot) => {
-        const toolsFound = [
-          snapshot.r7Found,
-          snapshot.amFound,
-          snapshot.dfFound,
-          snapshot.itFound,
-          snapshot.vmFound,
-        ].filter(Boolean).length;
-
-        if (category === 'fully') {
-          return toolsFound === 5;
-        } else if (category === 'partially') {
-          return toolsFound >= 3 && toolsFound <= 4;
-        } else if (category === 'non') {
-          return toolsFound <= 2;
-        }
-        return false;
+        const healthStatus = this.calculateSystemHealth(snapshot, targetDate);
+        return healthStatus === category;
       });
     }
 
-    // Transform snapshots to include system details and tool compliance
+    // Transform snapshots to include system details and tool health
     const systemsWithDetails = filteredSnapshots.map((snapshot) => {
+      const healthStatus = this.calculateSystemHealth(snapshot, targetDate);
+      
+      // Build tools reporting list (VMware excluded from health)
       const toolsReporting = [];
       if (snapshot.r7Found) toolsReporting.push('Rapid7');
       if (snapshot.amFound) toolsReporting.push('Automox');
       if (snapshot.dfFound) toolsReporting.push('Defender');
       if (snapshot.itFound) toolsReporting.push('Intune');
-      if (snapshot.vmFound) toolsReporting.push('VMware');
 
-      const toolsFound = toolsReporting.length;
-      let complianceLevel = 'Non-Compliant';
-      if (toolsFound === 5) {
-        complianceLevel = 'Fully Compliant';
-      } else if (toolsFound >= 3) {
-        complianceLevel = 'Partially Compliant';
+      // Count health tools only (R7, AM, DF)
+      const healthToolsCount = [
+        snapshot.r7Found,
+        snapshot.amFound,
+        snapshot.dfFound,
+      ].filter(Boolean).length;
+
+      // Determine health level label
+      let healthLevel = 'Inactive';
+      if (healthStatus === 'fully') {
+        healthLevel = 'Fully Healthy';
+      } else if (healthStatus === 'partially') {
+        healthLevel = 'Partially Healthy';
+      } else if (healthStatus === 'unhealthy') {
+        healthLevel = 'Unhealthy';
       }
 
       return {
@@ -606,14 +690,19 @@ export class SystemsService {
         fullname: snapshot.fullname,
         env: snapshot.env,
         toolsReporting,
-        toolsFound,
-        complianceLevel,
+        healthToolsCount,
+        healthLevel,
         toolStatus: {
           r7: snapshot.r7Found,
           am: snapshot.amFound,
           df: snapshot.dfFound,
           it: snapshot.itFound,
-          vm: snapshot.vmFound,
+        },
+        lagDays: {
+          r7: snapshot.r7LagDays,
+          am: snapshot.amLagDays,
+          df: snapshot.dfLagDays,
+          it: snapshot.itLagDays,
         },
       };
     });

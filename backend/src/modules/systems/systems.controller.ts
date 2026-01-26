@@ -37,25 +37,25 @@ export class SystemsController {
     return this.systemsService.getMissingSystems(daysThreshold);
   }
 
-  @Get('compliance-trending')
-  async getComplianceTrending(
+  @Get('health-trending')
+  async getHealthTrending(
     @Query('days') days?: string,
     @Query('env') env?: string,
   ) {
     const daysNum = days ? parseInt(days, 10) : 30;
-    return this.systemsService.getComplianceTrending(daysNum, env);
+    return this.systemsService.getHealthTrending(daysNum, env);
   }
 
-  @Get('compliance-category')
-  async getSystemsByComplianceCategory(
+  @Get('health-category')
+  async getSystemsByHealthCategory(
     @Query('date') date: string,
-    @Query('category') category: 'fully' | 'partially' | 'non' | 'new',
+    @Query('category') category: 'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new',
     @Query('env') env?: string,
   ) {
     if (!date || !category) {
       throw new Error('Date and category parameters are required');
     }
-    return this.systemsService.getSystemsByComplianceCategory(date, category, env);
+    return this.systemsService.getSystemsByHealthCategory(date, category, env);
   }
 
   @Get(':shortname')

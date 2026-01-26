@@ -1,37 +1,56 @@
-# Compliance Tracking Dashboard
+# Tooling Health Dashboard
 
-A full-stack application for monitoring systems across your network for compliance purposes. Track which systems are reporting to various security and monitoring tools (Rapid7, Automox, Defender, Intune, VMware), identify gaps in tooling coverage, and visualize historical compliance data with interactive dashboards.
+A full-stack application for monitoring the health of systems across your network based on security tooling coverage. Track which systems are reporting to essential security tools (Rapid7, Automox, Defender) with Intune as the primary discovery mechanism, identify gaps in tooling coverage, and visualize historical health data with interactive dashboards.
 
 ## 📋 Overview
 
-This dashboard helps identify gaps in tooling coverage for compliance requirements by:
+This dashboard helps identify gaps in security tooling coverage by:
 - Importing daily CSV snapshots of system reporting status
 - Tracking which systems report to which tools across multiple environments
-- Visualizing compliance trends over time with interactive charts
-- Providing drill-down capabilities to investigate specific compliance categories
+- Using Intune as the primary discovery mechanism with 15-day activity threshold
+- Visualizing health trends over time with interactive charts
+- Providing drill-down capabilities to investigate specific health categories
 - Filtering data by environment (dev, test, stage, prod)
 - Displaying historical data with calendar heatmaps per system
 
+## 🏥 Health Categories
+
+The system categorizes each system based on its tooling health status:
+
+- **✅ Fully Healthy**: System is active in Intune (seen within last 15 days) and reports to all 3 security tools (Rapid7, Automox, Defender)
+- **⚠️ Partially Healthy**: System is active in Intune and reports to 1-2 security tools
+- **❌ Unhealthy**: System is active in Intune but not reporting to any security tools
+- **💤 Inactive**: System has not been seen in Intune for more than 15 days, or is not in Intune at all
+- **🆕 New Systems**: Systems discovered for the first time on the latest import date
+
+**Important Notes:**
+- **Intune is the primary discovery mechanism**: A system must be present in Intune to be considered for health evaluation
+- **15-day activity threshold**: Systems not seen in Intune within 15 days are marked as inactive
+- **VMware is excluded**: VMware is infrastructure-level and not considered in tooling health calculations
+- **Only 3 tools matter for health**: Rapid7, Automox, and Defender are the security tools evaluated
+
 ## ✨ Key Features
 
-### 📊 Compliance Dashboard
-- **Real-time Compliance Metrics**: View today's compliance snapshot with counts for:
-  - ✅ Fully Compliant (all 5 tools reporting)
-  - ⚠️ Partially Compliant (3-4 tools reporting)
-  - ❌ Non-Compliant (0-2 tools reporting)
+### 📊 Health Dashboard
+- **Real-time Health Metrics**: View today's health snapshot with counts for:
+  - ✅ Fully Healthy (Intune active + all 3 tools)
+  - ⚠️ Partially Healthy (Intune active + 1-2 tools)
+  - ❌ Unhealthy (Intune active + 0 tools)
+  - 💤 Inactive (Intune > 15 days or not in Intune)
   - 🆕 New Systems (first appearance)
-- **Trending Analysis**: 30-day compliance trend visualization
+- **Trending Analysis**: 30-day health trend visualization
 - **Environment Filtering**: Filter all data by environment (dev, test, stage, prod, or all)
 - **Dynamic Environment Loading**: Environments are loaded from actual database data
 
 ### 🔍 Drill-Down Capabilities
-- **Interactive Category Cards**: Click any compliance category to view detailed system lists
+- **Interactive Category Cards**: Click any health category to view detailed system lists
 - **System Details Modal**: Shows:
   - System shortname and full name
   - Environment
-  - Individual tool status (Rapid7, Automox, Defender, Intune, VMware)
+  - Individual tool status (Rapid7, Automox, Defender, Intune)
   - Visual tool status indicators
-  - Color-coded compliance badges
+  - Color-coded health badges
+  - Intune activity status
 - **Keyboard Accessible**: Full keyboard navigation support (Tab, Enter, Space, ESC)
 
 ### 📅 Calendar Heatmaps
@@ -205,22 +224,24 @@ Stores daily CSV import data with comprehensive system information.
 #### New Systems
 - **`GET /systems/new-today`** - Get systems discovered today
 
-#### Missing Systems
-- **`GET /systems/missing`** - Get systems not seen recently
-  - Query params: `days` (optional): Days threshold (default: 7)
+#### Inactive Systems
+- **`GET /systems/missing`** - Get inactive systems (not seen in Intune for > 15 days)
+  - Query params: `days` (optional): Days threshold (default: 15)
 
-#### Compliance Trending
-- **`GET /systems/compliance-trending`** - Get compliance trend data
+#### Health Trending
+- **`GET /systems/health-trending`** - Get health trend data over time
   - Query params:
     - `days` (optional): Number of days (default: 30)
     - `env` (optional): Environment filter (dev, test, stage, prod)
+  - Returns: Daily counts of fully healthy, partially healthy, unhealthy, and inactive systems
 
-#### Compliance Category Drill-Down
-- **`GET /systems/compliance-category`** - Get systems by compliance category
+#### Health Category Drill-Down
+- **`GET /systems/health-category`** - Get systems by health category
   - Query params:
     - `date` (required): Date in ISO format
-    - `category` (required): Category type (`fully` | `partially` | `non` | `new`)
+    - `category` (required): Category type (`fully` | `partially` | `unhealthy` | `inactive` | `new`)
     - `env` (optional): Environment filter
+  - Returns: List of systems matching the specified health category
 
 #### System Details
 - **`GET /systems/:shortname`** - Get specific system details
@@ -419,10 +440,10 @@ curl -X POST http://localhost:3000/import/csv-path \
 
 ### Main Components
 
-- **[`ComplianceDashboard`](frontend/src/components/ComplianceDashboard.tsx)** - Main dashboard with metrics and trending
-- **[`ComplianceDrillDownModal`](frontend/src/components/ComplianceDrillDownModal.tsx)** - Modal for detailed system lists
+- **[`HealthDashboard`](frontend/src/components/HealthDashboard.tsx)** - Main dashboard with health metrics and trending
+- **[`HealthDrillDownModal`](frontend/src/components/HealthDrillDownModal.tsx)** - Modal for detailed system lists by health category
 - **[`SearchBar`](frontend/src/components/SearchBar.tsx)** - Real-time system search
-- **[`ComplianceCalendar`](frontend/src/components/ComplianceCalendar.tsx)** - Calendar heatmap visualization
+- **[`HealthCalendar`](frontend/src/components/HealthCalendar.tsx)** - Calendar heatmap visualization
 - **[`SystemDetails`](frontend/src/components/SystemDetails.tsx)** - Individual system detail view
 - **[`CsvImport`](frontend/src/components/CsvImport.tsx)** - CSV file upload interface
 
@@ -488,10 +509,11 @@ curl -X POST http://localhost:3000/import/csv-path \
 
 ## 📚 Additional Documentation
 
-- [Drill-Down Implementation](DRILL_DOWN_IMPLEMENTATION.md) - Details on compliance category drill-down feature
+- [Drill-Down Implementation](DRILL_DOWN_IMPLEMENTATION.md) - Details on health category drill-down feature
 - [Environment Filtering](ENVIRONMENT_FILTERING_IMPLEMENTATION.md) - Environment filtering implementation
 - [Environment Selector Fixes](ENVIRONMENT_SELECTOR_FIXES.md) - Dynamic environment loading
 - [K3s Deployment Guide](K3S-DEPLOYMENT.md) - Comprehensive K3s deployment instructions
+- [Health Refactoring Plan](HEALTH-REFACTORING-PLAN.md) - Complete refactoring plan from compliance to health
 - [NestJS Documentation](https://docs.nestjs.com/)
 - [React Documentation](https://react.dev/)
 - [TypeORM Documentation](https://typeorm.io/)

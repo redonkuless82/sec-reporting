@@ -130,62 +130,62 @@ export interface MissingSystemsResponse {
   daysThreshold: number;
 }
 
-export interface ComplianceTrendDataPoint {
+export interface HealthTrendDataPoint {
   date: string;
   totalSystems: number;
-  fullyCompliant: number;
-  partiallyCompliant: number;
-  nonCompliant: number;
+  fullyHealthy: number;
+  partiallyHealthy: number;
+  unhealthy: number;
+  inactive: number;
   newSystems: number;
   existingSystems: number;
-  complianceRate: number;
+  healthRate: number;
   toolCompliance: {
     r7: number;
     am: number;
     df: number;
     it: number;
-    vm: number;
   };
 }
 
-export interface ComplianceTrendingSummary {
+export interface HealthTrendingSummary {
   totalSystemsNow: number;
   totalSystemsStart: number;
-  complianceImprovement: number;
+  healthImprovement: number;
   newSystemsDiscovered: number;
-  systemsLostCompliance: number;
-  systemsGainedCompliance: number;
+  systemsLostHealth: number;
+  systemsGainedHealth: number;
 }
 
-export interface ComplianceTrendingResponse {
+export interface HealthTrendingResponse {
   dateRange: {
     startDate: string;
     endDate: string;
     days: number;
   };
-  trendData: ComplianceTrendDataPoint[];
-  summary: ComplianceTrendingSummary;
+  trendData: HealthTrendDataPoint[];
+  summary: HealthTrendingSummary;
 }
 
-export interface SystemComplianceDetail {
+export interface SystemHealthDetail {
   shortname: string;
   fullname: string | null;
   env: string | null;
   toolsReporting: string[];
   toolsFound: number;
-  complianceLevel: string;
+  healthLevel: string;
   toolStatus: {
     r7: boolean;
     am: boolean;
     df: boolean;
     it: boolean;
-    vm: boolean;
   };
+  isActive: boolean;
 }
 
-export interface ComplianceCategoryResponse {
+export interface HealthCategoryResponse {
   date: string;
-  category: 'fully' | 'partially' | 'non' | 'new';
+  category: 'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new';
   count: number;
-  systems: SystemComplianceDetail[];
+  systems: SystemHealthDetail[];
 }

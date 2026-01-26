@@ -1,26 +1,26 @@
 import { useState, useEffect } from 'react';
 import { systemsApi } from '../services/api';
-import type { SystemComplianceDetail } from '../types';
+import type { SystemHealthDetail } from '../types';
 import './ComplianceDrillDownModal.css';
 
-interface ComplianceDrillDownModalProps {
+interface HealthDrillDownModalProps {
   isOpen: boolean;
   onClose: () => void;
   date: string;
-  category: 'fully' | 'partially' | 'non' | 'new';
+  category: 'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new';
   categoryLabel: string;
   environment?: string;
 }
 
-export default function ComplianceDrillDownModal({
+export default function HealthDrillDownModal({
   isOpen,
   onClose,
   date,
   category,
   categoryLabel,
   environment,
-}: ComplianceDrillDownModalProps) {
-  const [systems, setSystems] = useState<SystemComplianceDetail[]>([]);
+}: HealthDrillDownModalProps) {
+  const [systems, setSystems] = useState<SystemHealthDetail[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +34,7 @@ export default function ComplianceDrillDownModal({
     setLoading(true);
     setError(null);
     try {
-      const response = await systemsApi.getSystemsByComplianceCategory(date, category, environment);
+      const response = await systemsApi.getSystemsByHealthCategory(date, category, environment);
       setSystems(response.systems);
     } catch (err) {
       console.error('Error loading systems:', err);
@@ -56,7 +56,6 @@ export default function ComplianceDrillDownModal({
       am: '🔧',
       df: '🛡️',
       it: '📱',
-      vm: '💻',
     };
     
     const toolKey = toolName.toLowerCase().substring(0, 2);
@@ -128,7 +127,7 @@ export default function ComplianceDrillDownModal({
                       <th>Environment</th>
                       <th>Tools Reporting</th>
                       <th className="text-center">Tool Status</th>
-                      <th>Compliance Level</th>
+                      <th>Health Level</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -152,7 +151,7 @@ export default function ComplianceDrillDownModal({
                             )}
                           </div>
                           <div className="tools-count">
-                            {system.toolsFound} of 5 tools
+                            {system.toolsFound} of 3 tools
                           </div>
                         </td>
                         <td className="tool-status-icons">
@@ -161,12 +160,11 @@ export default function ComplianceDrillDownModal({
                             {getToolIcon('Automox', system.toolStatus.am)}
                             {getToolIcon('Defender', system.toolStatus.df)}
                             {getToolIcon('Intune', system.toolStatus.it)}
-                            {getToolIcon('VMware', system.toolStatus.vm)}
                           </div>
                         </td>
                         <td className="compliance-level">
-                          <span className={`compliance-badge ${system.complianceLevel.toLowerCase().replace(' ', '-')}`}>
-                            {system.complianceLevel}
+                          <span className={`compliance-badge ${system.healthLevel.toLowerCase().replace(' ', '-')}`}>
+                            {system.healthLevel}
                           </span>
                         </td>
                       </tr>

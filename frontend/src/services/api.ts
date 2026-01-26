@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { SystemsResponse, CalendarResponse, StatsResponse, System, NewSystemsResponse, MissingSystemsResponse, ComplianceTrendingResponse, ComplianceCategoryResponse } from '../types';
+import type { SystemsResponse, CalendarResponse, StatsResponse, System, NewSystemsResponse, MissingSystemsResponse, HealthTrendingResponse, HealthCategoryResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -81,24 +81,24 @@ export const systemsApi = {
     return response.data;
   },
 
-  // Get compliance trending data
-  getComplianceTrending: async (days: number = 30, env?: string): Promise<ComplianceTrendingResponse> => {
+  // Get health trending data
+  getHealthTrending: async (days: number = 30, env?: string): Promise<HealthTrendingResponse> => {
     const params = new URLSearchParams();
     params.append('days', days.toString());
     if (env) {
       params.append('env', env);
     }
     
-    const response = await api.get<ComplianceTrendingResponse>(`/systems/compliance-trending?${params.toString()}`);
+    const response = await api.get<HealthTrendingResponse>(`/systems/health-trending?${params.toString()}`);
     return response.data;
   },
 
-  // Get systems by compliance category
-  getSystemsByComplianceCategory: async (
+  // Get systems by health category
+  getSystemsByHealthCategory: async (
     date: string,
-    category: 'fully' | 'partially' | 'non' | 'new',
+    category: 'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new',
     env?: string
-  ): Promise<ComplianceCategoryResponse> => {
+  ): Promise<HealthCategoryResponse> => {
     const params = new URLSearchParams();
     params.append('date', date);
     params.append('category', category);
@@ -106,7 +106,7 @@ export const systemsApi = {
       params.append('env', env);
     }
     
-    const response = await api.get<ComplianceCategoryResponse>(`/systems/compliance-category?${params.toString()}`);
+    const response = await api.get<HealthCategoryResponse>(`/systems/health-category?${params.toString()}`);
     return response.data;
   },
 
