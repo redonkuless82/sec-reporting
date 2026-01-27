@@ -49,10 +49,17 @@ export class AnalyticsService {
   }
 
   /**
-   * Get system classification with detailed metrics
+   * Get system classification with detailed metrics (OPTIMIZED)
    */
   async getSystemClassification(days: number = 30, env?: string): Promise<SystemClassificationResponseDto> {
     this.logger.log(`Getting system classification for ${days} days${env ? ` in ${env}` : ''}`);
+
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
 
     // Get latest snapshot date
     const latestDateResult = await this.snapshotRepository
@@ -72,24 +79,61 @@ export class AnalyticsService {
     const latestDate = new Date(latestDateResult.maxDate);
 
     // Get all unique systems from latest snapshot
-    const queryBuilder = this.snapshotRepository
+    const systemsQueryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
 
     if (env) {
-      queryBuilder.andWhere('snapshot.env = :env', { env });
+      systemsQueryBuilder.andWhere('snapshot.env = :env', { env });
     }
 
-    const systems = await queryBuilder.getRawMany();
+    const systems = await systemsQueryBuilder.getRawMany();
+    const shortnames = systems.map(s => s.shortname);
 
-    // Analyze each system
+    if (shortnames.length === 0) {
+      return {
+        systems: [],
+        overview: await this.stabilityScoringService.getStabilityOverview(days, env),
+        actionableSystems: [],
+        expectedBehaviorSystems: [],
+      };
+    }
+
+    // OPTIMIZATION: Fetch all snapshots in bulk
+    const allSnapshots = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.shortname IN (:...shortnames)', { shortnames })
+      .andWhere('snapshot.importDate >= :startDate', { startDate })
+      .andWhere('snapshot.importDate <= :endDate', { endDate })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .orderBy('snapshot.shortname', 'ASC')
+      .addOrderBy('snapshot.importDate', 'ASC')
+      .getMany();
+
+    // Group snapshots by system
+    const snapshotsBySystem = new Map<string, any[]>();
+    for (const snapshot of allSnapshots) {
+      if (!snapshotsBySystem.has(snapshot.shortname)) {
+        snapshotsBySystem.set(snapshot.shortname, []);
+      }
+      snapshotsBySystem.get(snapshot.shortname)!.push(snapshot);
+    }
+
+    // Analyze each system using bulk-fetched data
     const metrics: SystemStabilityMetrics[] = [];
-    for (const system of systems) {
-      const metric = await this.stabilityScoringService.analyzeSystemStability(system.shortname, days);
-      if (metric) {
-        metrics.push(metric);
+    for (const shortname of shortnames) {
+      const systemSnapshots = snapshotsBySystem.get(shortname) || [];
+      if (systemSnapshots.length > 0) {
+        const metric = await this.stabilityScoringService.analyzeSystemStabilityFromSnapshots(
+          shortname,
+          systemSnapshots,
+          endDate,
+        );
+        if (metric) {
+          metrics.push(metric);
+        }
       }
     }
 
@@ -97,7 +141,7 @@ export class AnalyticsService {
     const actionableSystems = metrics.filter(m => m.isActionable);
     const expectedBehaviorSystems = metrics.filter(m => !m.isActionable);
 
-    // Get overview
+    // Get overview (will use cached data if called recently)
     const overview = await this.stabilityScoringService.getStabilityOverview(days, env);
 
     return {

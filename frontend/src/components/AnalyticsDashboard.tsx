@@ -16,14 +16,33 @@ export default function AnalyticsDashboard({ days = 30, env, onSystemClick }: An
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(days);
-  const [selectedEnvironment] = useState<string>(env || '');
+  const [selectedEnvironment, setSelectedEnvironment] = useState<string>(env || '');
+  const [environments, setEnvironments] = useState<string[]>([]);
+  const [environmentsLoading, setEnvironmentsLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalClassification, setModalClassification] = useState<'STABLE_HEALTHY' | 'STABLE_UNHEALTHY' | 'RECOVERING' | 'DEGRADING' | 'FLAPPING' | null>(null);
   const [modalLabel, setModalLabel] = useState('');
 
   useEffect(() => {
+    loadEnvironments();
+  }, []);
+
+  useEffect(() => {
     loadData();
   }, [selectedPeriod, selectedEnvironment]);
+
+  const loadEnvironments = async () => {
+    setEnvironmentsLoading(true);
+    try {
+      const response = await systemsApi.getEnvironments();
+      setEnvironments(response.environments);
+    } catch (err) {
+      console.error('Error loading environments:', err);
+      setEnvironments([]);
+    } finally {
+      setEnvironmentsLoading(false);
+    }
+  };
 
   const handleClassificationClick = (
     classification: 'STABLE_HEALTHY' | 'STABLE_UNHEALTHY' | 'RECOVERING' | 'DEGRADING' | 'FLAPPING',
@@ -206,6 +225,29 @@ export default function AnalyticsDashboard({ days = 30, env, onSystemClick }: An
           >
             📥 Download Report
           </button>
+          <div className="environment-selector">
+            <label htmlFor="analytics-env-select">Environment:</label>
+            <select
+              id="analytics-env-select"
+              value={selectedEnvironment}
+              onChange={(e) => setSelectedEnvironment(e.target.value)}
+              className="env-select"
+              disabled={environmentsLoading}
+            >
+              <option value="">All Environments</option>
+              {environmentsLoading ? (
+                <option disabled>Loading environments...</option>
+              ) : environments.length === 0 ? (
+                <option disabled>No environments found</option>
+              ) : (
+                environments.map((env) => (
+                  <option key={env} value={env}>
+                    {env}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
           <div className="period-selector">
             <button
               className={selectedPeriod === 7 ? 'active' : ''}

@@ -406,7 +406,7 @@ export class StabilityScoringService {
   }
 
   /**
-   * Get stability overview for all systems
+   * Get stability overview for all systems (OPTIMIZED)
    */
   async getStabilityOverview(days: number = 30, env?: string): Promise<StabilityOverview> {
     const endDate = new Date();
@@ -429,24 +429,53 @@ export class StabilityScoringService {
     const latestDate = new Date(latestDateResult.maxDate);
 
     // Get all unique systems from latest snapshot
-    const queryBuilder = this.snapshotRepository
+    const systemsQueryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
 
     if (env) {
-      queryBuilder.andWhere('snapshot.env = :env', { env });
+      systemsQueryBuilder.andWhere('snapshot.env = :env', { env });
     }
 
-    const systems = await queryBuilder.getRawMany();
+    const systems = await systemsQueryBuilder.getRawMany();
+    const shortnames = systems.map(s => s.shortname);
 
-    // Analyze each system
+    if (shortnames.length === 0) {
+      return this.getEmptyOverview();
+    }
+
+    // OPTIMIZATION: Fetch all snapshots for all systems in one query
+    const allSnapshotsQueryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.shortname IN (:...shortnames)', { shortnames })
+      .andWhere('snapshot.importDate >= :startDate', { startDate })
+      .andWhere('snapshot.importDate <= :endDate', { endDate })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .orderBy('snapshot.shortname', 'ASC')
+      .addOrderBy('snapshot.importDate', 'ASC');
+
+    const allSnapshots = await allSnapshotsQueryBuilder.getMany();
+
+    // Group snapshots by system
+    const snapshotsBySystem = new Map<string, DailySnapshot[]>();
+    for (const snapshot of allSnapshots) {
+      if (!snapshotsBySystem.has(snapshot.shortname)) {
+        snapshotsBySystem.set(snapshot.shortname, []);
+      }
+      snapshotsBySystem.get(snapshot.shortname)!.push(snapshot);
+    }
+
+    // Analyze each system using cached snapshots
     const metrics: SystemStabilityMetrics[] = [];
-    for (const system of systems) {
-      const metric = await this.analyzeSystemStability(system.shortname, days);
-      if (metric) {
-        metrics.push(metric);
+    for (const shortname of shortnames) {
+      const systemSnapshots = snapshotsBySystem.get(shortname) || [];
+      if (systemSnapshots.length > 0) {
+        const metric = this.analyzeSystemStabilityFromSnapshots(shortname, systemSnapshots, endDate);
+        if (metric) {
+          metrics.push(metric);
+        }
       }
     }
 
@@ -466,6 +495,134 @@ export class StabilityScoringService {
     };
 
     return overview;
+  }
+
+  /**
+   * Analyze system stability from pre-fetched snapshots (OPTIMIZED)
+   * Made public for use by analytics service
+   */
+  analyzeSystemStabilityFromSnapshots(
+    shortname: string,
+    snapshots: DailySnapshot[],
+    endDate: Date,
+  ): SystemStabilityMetrics | null {
+    if (snapshots.length === 0) {
+      return null;
+    }
+
+    // Calculate health status for each day
+    const healthHistory: Array<{
+      date: Date;
+      health: 'fully' | 'partially' | 'unhealthy' | 'inactive';
+    }> = [];
+
+    for (const snapshot of snapshots) {
+      const health = this.calculateHealthStatus(snapshot, new Date(snapshot.importDate));
+      healthHistory.push({
+        date: snapshot.importDate,
+        health,
+      });
+    }
+
+    // Count health changes
+    let healthChangeCount = 0;
+    for (let i = 1; i < healthHistory.length; i++) {
+      if (healthHistory[i].health !== healthHistory[i - 1].health) {
+        healthChangeCount++;
+      }
+    }
+
+    // Calculate consecutive days stable
+    let consecutiveDaysStable = 1;
+    const currentHealth = healthHistory[healthHistory.length - 1].health;
+    for (let i = healthHistory.length - 2; i >= 0; i--) {
+      if (healthHistory[i].health === currentHealth) {
+        consecutiveDaysStable++;
+      } else {
+        break;
+      }
+    }
+
+    // Find last health change date
+    let lastHealthChange: Date | null = null;
+    let previousHealth: 'fully' | 'partially' | 'unhealthy' | 'inactive' | null = null;
+    for (let i = healthHistory.length - 2; i >= 0; i--) {
+      if (healthHistory[i].health !== currentHealth) {
+        lastHealthChange = healthHistory[i + 1].date;
+        previousHealth = healthHistory[i].health;
+        break;
+      }
+    }
+
+    // Calculate stability score
+    const stabilityScore = this.calculateStabilityScore(
+      healthChangeCount,
+      healthHistory.length,
+      consecutiveDaysStable,
+    );
+
+    // Classify system
+    const classification = this.classifySystem(
+      stabilityScore,
+      healthChangeCount,
+      consecutiveDaysStable,
+      currentHealth,
+      previousHealth,
+      healthHistory.length,
+    );
+
+    // Analyze R7 gap
+    const latestSnapshot = snapshots[snapshots.length - 1];
+    const r7Analysis = this.classifyR7Gap(latestSnapshot);
+
+    // Determine recovery status
+    const daysSinceChange = lastHealthChange
+      ? Math.floor((endDate.getTime() - new Date(lastHealthChange).getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    const recoveryAnalysis = this.determineRecoveryStatus(currentHealth, previousHealth, daysSinceChange);
+
+    // Determine if actionable
+    const isActionable =
+      classification === 'STABLE_UNHEALTHY' ||
+      classification === 'DEGRADING' ||
+      !r7Analysis.isExpected ||
+      recoveryAnalysis.isStuck;
+
+    let actionReason: string | null = null;
+    if (isActionable) {
+      const reasons: string[] = [];
+      if (classification === 'STABLE_UNHEALTHY') {
+        reasons.push('System consistently unhealthy');
+      }
+      if (classification === 'DEGRADING') {
+        reasons.push('System health degrading');
+      }
+      if (!r7Analysis.isExpected) {
+        reasons.push(r7Analysis.reason);
+      }
+      if (recoveryAnalysis.isStuck) {
+        reasons.push(recoveryAnalysis.explanation);
+      }
+      actionReason = reasons.join('; ');
+    }
+
+    return {
+      shortname,
+      stabilityScore,
+      classification,
+      healthChangeCount,
+      consecutiveDaysStable,
+      daysTracked: healthHistory.length,
+      currentHealthStatus: currentHealth,
+      previousHealthStatus: previousHealth,
+      lastHealthChange,
+      r7GapClassification: r7Analysis.classification,
+      r7GapReason: r7Analysis.reason,
+      recoveryStatus: recoveryAnalysis.status,
+      recoveryDays: daysSinceChange,
+      isActionable,
+      actionReason,
+    };
   }
 
   /**
@@ -516,7 +673,7 @@ export class StabilityScoringService {
   }
 
   /**
-   * Get recovery tracking for all systems
+   * Get recovery tracking for all systems (OPTIMIZED)
    */
   async getRecoveryTracking(days: number = 30, env?: string): Promise<RecoveryTracking[]> {
     const endDate = new Date();
@@ -539,40 +696,68 @@ export class StabilityScoringService {
     const latestDate = new Date(latestDateResult.maxDate);
 
     // Get all unique systems from latest snapshot
-    const queryBuilder = this.snapshotRepository
+    const systemsQueryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
 
     if (env) {
-      queryBuilder.andWhere('snapshot.env = :env', { env });
+      systemsQueryBuilder.andWhere('snapshot.env = :env', { env });
     }
 
-    const systems = await queryBuilder.getRawMany();
+    const systems = await systemsQueryBuilder.getRawMany();
+    const shortnames = systems.map(s => s.shortname);
 
-    // Analyze each system
+    if (shortnames.length === 0) {
+      return [];
+    }
+
+    // OPTIMIZATION: Fetch all snapshots in bulk
+    const allSnapshots = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.shortname IN (:...shortnames)', { shortnames })
+      .andWhere('snapshot.importDate >= :startDate', { startDate })
+      .andWhere('snapshot.importDate <= :endDate', { endDate })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .orderBy('snapshot.shortname', 'ASC')
+      .addOrderBy('snapshot.importDate', 'ASC')
+      .getMany();
+
+    // Group snapshots by system
+    const snapshotsBySystem = new Map<string, DailySnapshot[]>();
+    for (const snapshot of allSnapshots) {
+      if (!snapshotsBySystem.has(snapshot.shortname)) {
+        snapshotsBySystem.set(snapshot.shortname, []);
+      }
+      snapshotsBySystem.get(snapshot.shortname)!.push(snapshot);
+    }
+
+    // Analyze each system using bulk-fetched data
     const trackings: RecoveryTracking[] = [];
-    for (const system of systems) {
-      const metric = await this.analyzeSystemStability(system.shortname, days);
-      if (metric && metric.recoveryStatus !== 'NOT_APPLICABLE') {
-        const recoveryAnalysis = this.determineRecoveryStatus(
-          metric.currentHealthStatus,
-          metric.previousHealthStatus,
-          metric.recoveryDays,
-        );
+    for (const shortname of shortnames) {
+      const systemSnapshots = snapshotsBySystem.get(shortname) || [];
+      if (systemSnapshots.length > 0) {
+        const metric = this.analyzeSystemStabilityFromSnapshots(shortname, systemSnapshots, endDate);
+        if (metric && metric.recoveryStatus !== 'NOT_APPLICABLE') {
+          const recoveryAnalysis = this.determineRecoveryStatus(
+            metric.currentHealthStatus,
+            metric.previousHealthStatus,
+            metric.recoveryDays,
+          );
 
-        trackings.push({
-          shortname: system.shortname,
-          status: metric.recoveryStatus,
-          recoveryStartDate: metric.lastHealthChange,
-          daysSinceRecoveryStart: metric.recoveryDays,
-          currentHealth: metric.currentHealthStatus,
-          previousHealth: metric.previousHealthStatus,
-          isStuck: recoveryAnalysis.isStuck,
-          expectedRecoveryTime: this.NORMAL_RECOVERY_DAYS,
-          explanation: recoveryAnalysis.explanation,
-        });
+          trackings.push({
+            shortname: shortname,
+            status: metric.recoveryStatus,
+            recoveryStartDate: metric.lastHealthChange,
+            daysSinceRecoveryStart: metric.recoveryDays,
+            currentHealth: metric.currentHealthStatus,
+            previousHealth: metric.previousHealthStatus,
+            isStuck: recoveryAnalysis.isStuck,
+            expectedRecoveryTime: this.NORMAL_RECOVERY_DAYS,
+            explanation: recoveryAnalysis.explanation,
+          });
+        }
       }
     }
 

@@ -400,6 +400,8 @@ export class SystemsService {
       .orderBy('snapshot.importDate', 'ASC')
       .getMany();
 
+    console.log(`[HealthTrending] Environment: ${env || 'all'}, Snapshots found: ${snapshots.length}`);
+    
     if (snapshots.length === 0) {
       return {
         dateRange: { startDate, endDate, days },
@@ -428,6 +430,9 @@ export class SystemsService {
       }
       snapshotsByDate.get(dateKey)!.push(snapshot);
     });
+
+    console.log(`[HealthTrending] Grouped into ${snapshotsByDate.size} unique dates`);
+    console.log(`[HealthTrending] Date keys:`, Array.from(snapshotsByDate.keys()));
 
     // Calculate daily metrics
     const trendData = [];
