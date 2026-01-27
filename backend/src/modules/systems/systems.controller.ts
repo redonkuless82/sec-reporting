@@ -27,19 +27,22 @@ export class SystemsController {
   }
 
   @Get('new-today')
-  async getNewSystemsToday() {
-    return this.systemsService.getNewSystemsToday();
+  async getNewSystemsToday(@Query('env') env?: string) {
+    return this.systemsService.getNewSystemsToday(env);
   }
 
   @Get('reappeared')
-  async getReappearedSystems() {
-    return this.systemsService.getReappearedSystems();
+  async getReappearedSystems(@Query('env') env?: string) {
+    return this.systemsService.getReappearedSystems(env);
   }
 
   @Get('missing')
-  async getMissingSystems(@Query('days') days?: string) {
+  async getMissingSystems(
+    @Query('days') days?: string,
+    @Query('env') env?: string,
+  ) {
     const daysThreshold = days ? parseInt(days, 10) : 7;
-    return this.systemsService.getMissingSystems(daysThreshold);
+    return this.systemsService.getMissingSystems(daysThreshold, env);
   }
 
   @Get('health-trending')

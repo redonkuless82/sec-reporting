@@ -17,36 +17,48 @@ export class SystemsService {
   ) {}
 
   /**
-   * Check if a system is active based on Intune presence
-   * A system is active if it has been seen in Intune within the last 15 days
+   * Check if a system is active based on Intune presence OR other tool presence
+   * A system is active if:
+   * 1. It has been seen in Intune within the last 15 days, OR
+   * 2. It has ANY health tool reporting (for environments without Intune)
    */
   private isSystemActive(snapshot: DailySnapshot, referenceDate: Date): boolean {
-    if (!snapshot.itFound) {
-      return false; // Not in Intune = inactive
+    // Check if any health tools are present (R7, AM, DF)
+    const hasAnyHealthTool = snapshot.r7Found || snapshot.amFound || snapshot.dfFound;
+    
+    // If Intune is found, use Intune-based logic
+    if (snapshot.itFound) {
+      // Check if Intune lag days is within threshold
+      if (snapshot.itLagDays !== null && snapshot.itLagDays !== undefined) {
+        return snapshot.itLagDays <= this.INTUNE_INACTIVE_DAYS;
+      }
+      // If no lag data, assume active if found in Intune
+      return true;
     }
-
-    // Check if Intune lag days is within threshold
-    if (snapshot.itLagDays !== null && snapshot.itLagDays !== undefined) {
-      return snapshot.itLagDays <= this.INTUNE_INACTIVE_DAYS;
+    
+    // If Intune is NOT found but health tools are present, consider active
+    // This handles environments that don't use Intune
+    if (hasAnyHealthTool) {
+      return true;
     }
-
-    // If no lag data, assume active if found in Intune
-    return true;
+    
+    // No Intune and no health tools = inactive
+    return false;
   }
 
   /**
    * Calculate health status for a system
    * Health is based on: Rapid7, Automox, and Defender (VMware excluded)
-   * System must be active in Intune (last 15 days) to be considered
+   * System must be active (in Intune OR has health tools reporting) to be considered
    *
    * Returns:
    * - 'fully': All 3 tools (R7 + AM + DF) present
    * - 'partially': 1-2 tools present
-   * - 'unhealthy': 0 tools present (but in Intune)
-   * - 'inactive': Not in Intune or Intune lag > 15 days
+   * - 'unhealthy': 0 tools present (but system is active)
+   * - 'inactive': Not active (no Intune and no health tools)
    */
   private calculateSystemHealth(snapshot: DailySnapshot, referenceDate: Date): 'fully' | 'partially' | 'unhealthy' | 'inactive' {
-    // First check if system is active in Intune
+    // First check if system is active (Intune OR health tools present)
     if (!this.isSystemActive(snapshot, referenceDate)) {
       return 'inactive';
     }
@@ -227,7 +239,7 @@ export class SystemsService {
     };
   }
 
-  async getNewSystemsToday() {
+  async getNewSystemsToday(env?: string) {
     // Get the latest import date from the database (not current date)
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
@@ -251,12 +263,18 @@ export class SystemsService {
 
     // Find systems that appeared in snapshots for the first time on the latest import date
     // Get all shortnames that have snapshots on the latest import date
-    const systemsWithSnapshotsToday = await this.snapshotRepository
+    const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('snapshot.importDate >= :today', { today })
-      .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
-      .getRawMany();
+      .andWhere('snapshot.importDate < :tomorrow', { tomorrow });
+    
+    // Apply environment filter if provided
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+    
+    const systemsWithSnapshotsToday = await queryBuilder.getRawMany();
 
     if (systemsWithSnapshotsToday.length === 0) {
       return {
@@ -296,7 +314,7 @@ export class SystemsService {
     };
   }
 
-  async getMissingSystems(daysThreshold: number = 7) {
+  async getMissingSystems(daysThreshold: number = 7, env?: string) {
     // Get the latest import date (today's snapshot)
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
@@ -315,15 +333,24 @@ export class SystemsService {
     const today = new Date(latestImportDate.maxDate);
     today.setHours(0, 0, 0, 0);
 
-    // Get all systems from the systems table
-    const allSystems = await this.systemRepository.find();
+    // Get all systems from the systems table (filtered by environment if provided)
+    const systemsQueryBuilder = this.systemRepository.createQueryBuilder('system');
+    if (env) {
+      systemsQueryBuilder.where('system.env = :env', { env });
+    }
+    const allSystems = await systemsQueryBuilder.getMany();
 
     // Find systems that are in today's snapshot
-    const systemsInToday = await this.snapshotRepository
+    const todayQueryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
-      .where('DATE(snapshot.importDate) = DATE(:today)', { today })
-      .getRawMany();
+      .where('DATE(snapshot.importDate) = DATE(:today)', { today });
+    
+    if (env) {
+      todayQueryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+    
+    const systemsInToday = await todayQueryBuilder.getRawMany();
 
     const todayShortnames = new Set(systemsInToday.map((s) => s.shortname));
 
@@ -843,7 +870,7 @@ export class SystemsService {
     };
   }
 
-  async getReappearedSystems() {
+  async getReappearedSystems(env?: string) {
     // Get the latest import date
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
@@ -865,13 +892,18 @@ export class SystemsService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     // Get all systems in today's snapshot
-    const systemsToday = await this.snapshotRepository
+    const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('snapshot.importDate >= :today', { today })
       .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
-      .getRawMany();
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+    
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+    
+    const systemsToday = await queryBuilder.getRawMany();
 
     const reappearedSystems = [];
 
