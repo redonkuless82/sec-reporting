@@ -1,3 +1,113 @@
+/* Comparison indicators */
+.card-comparison {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+.card-comparison.positive {
+  color: #4caf50;
+}
+
+.card-comparison.negative {
+  color: #f44336;
+}
+
+/* Tool Trending Section */
+.tool-trending-section {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: var(--card-bg, #ffffff);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tool-trending-section h3 {
+  margin: 0 0 1.5rem 0;
+  color: var(--text-primary, #333);
+}
+
+.tool-trends-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.tool-trend-card {
+  padding: 1.25rem;
+  background: var(--bg-tertiary, #21262d);
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 8px;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.tool-trend-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(88, 166, 255, 0.2);
+  border-color: var(--accent-primary, #58a6ff);
+}
+
+.tool-trend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.tool-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text-primary, #f0f6fc);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.trend-indicator {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.trend-indicator.up {
+  color: var(--accent-success, #3fb950);
+}
+
+.trend-indicator.down {
+  color: var(--accent-danger, #f85149);
+}
+
+.trend-indicator.stable {
+  color: var(--text-muted, #8b949e);
+}
+
+.tool-trend-value {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: var(--text-primary, #f0f6fc);
+  margin-bottom: 0.5rem;
+  font-family: 'Courier New', monospace;
+}
+
+.tool-trend-change {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  font-family: 'Courier New', monospace;
+}
+
+.tool-trend-change.positive {
+  color: var(--accent-success, #3fb950);
+}
+
+.tool-trend-change.negative {
+  color: var(--accent-danger, #f85149);
+}
+
+.tool-trend-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #c9d1d9);
+  font-family: 'Courier New', monospace;
+}
+
 .compliance-dashboard {
   padding: 20px;
   background: var(--card-bg);
@@ -120,7 +230,7 @@
   color: white;
 }
 
-/* Summary Cards */
+/* Summary Cards - Dark Military Theme */
 .summary-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -133,9 +243,43 @@
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: var(--bg-secondary, #f5f5f5);
+  background: var(--bg-tertiary, #21262d);
   border-radius: 8px;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, #30363d);
+  transition: all 0.3s ease;
+}
+
+.summary-card:hover {
+  border-color: var(--accent-primary, #58a6ff);
+  box-shadow: 0 4px 16px rgba(88, 166, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.summary-card.success {
+  border-color: var(--accent-success, #3fb950);
+  background: rgba(63, 185, 80, 0.05);
+}
+
+.summary-card.success:hover {
+  box-shadow: 0 4px 16px rgba(63, 185, 80, 0.3);
+}
+
+.summary-card.warning {
+  border-color: var(--accent-warning, #d29922);
+  background: rgba(210, 153, 34, 0.05);
+}
+
+.summary-card.warning:hover {
+  box-shadow: 0 4px 16px rgba(210, 153, 34, 0.3);
+}
+
+.summary-card.info {
+  border-color: var(--accent-primary, #58a6ff);
+  background: rgba(88, 166, 255, 0.05);
+}
+
+.summary-card.info:hover {
+  box-shadow: 0 4px 16px rgba(88, 166, 255, 0.3);
 }
 
 .card-icon {
@@ -148,45 +292,53 @@
 }
 
 .card-label {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: 0.75rem;
+  color: var(--text-muted, #8b949e);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  font-weight: 700;
 }
 
 .card-value {
-  font-size: 28px;
+  font-size: 2rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--text-primary, #f0f6fc);
   line-height: 1.2;
+  font-family: 'Courier New', monospace;
+  text-shadow: 0 2px 8px rgba(88, 166, 255, 0.3);
 }
 
 .card-value.positive {
-  color: #4caf50;
+  color: var(--accent-success, #3fb950);
+  text-shadow: 0 2px 8px rgba(63, 185, 80, 0.5);
 }
 
 .card-value.negative {
-  color: #f44336;
+  color: var(--accent-danger, #f85149);
+  text-shadow: 0 2px 8px rgba(248, 81, 73, 0.5);
 }
 
 .card-change {
-  font-size: 13px;
+  font-size: 0.8rem;
   margin-top: 4px;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
 }
 
 .card-change.positive {
-  color: #4caf50;
+  color: var(--accent-success, #3fb950);
 }
 
 .card-change.negative {
-  color: #f44336;
+  color: var(--accent-danger, #f85149);
 }
 
 .card-description {
-  font-size: 13px;
-  color: var(--text-secondary);
+  font-size: 0.8rem;
+  color: var(--text-secondary, #c9d1d9);
   margin-top: 4px;
+  font-family: 'Courier New', monospace;
 }
 
 /* Legend */

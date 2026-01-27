@@ -4,6 +4,7 @@ import SystemDetails from '../components/SystemDetails';
 import ToolCalendars from '../components/ToolCalendars';
 import CsvImport from '../components/CsvImport';
 import HealthDashboard from '../components/HealthDashboard';
+import AnalyticsDashboard from '../components/AnalyticsDashboard';
 import type { System, MissingSystem } from '../types';
 
 export default function Home() {
@@ -17,9 +18,13 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalSystems, setTotalSystems] = useState(0);
   const [newSystemsToday, setNewSystemsToday] = useState<System[]>([]);
+  const [reappearedSystems, setReappearedSystems] = useState<any[]>([]);
   const [missingSystems, setMissingSystems] = useState<MissingSystem[]>([]);
   const [loadingNewSystems, setLoadingNewSystems] = useState(true);
+  const [loadingReappearedSystems, setLoadingReappearedSystems] = useState(true);
   const [loadingMissingSystems, setLoadingMissingSystems] = useState(true);
+  const [latestImportDate, setLatestImportDate] = useState<Date | null>(null);
+  const [activeTab, setActiveTab] = useState<'health' | 'analytics'>('health');
   const itemsPerPage = 20;
 
   useEffect(() => {
@@ -29,6 +34,7 @@ export default function Home() {
   useEffect(() => {
     loadEnvironments();
     loadNewSystemsToday();
+    loadReappearedSystems();
     loadMissingSystems();
   }, []);
 
@@ -79,12 +85,28 @@ export default function Home() {
     setLoadingNewSystems(true);
     try {
       const response = await systemsApi.getNewSystemsToday();
-      setNewSystemsToday(response.systems);
+      setNewSystemsToday(response.systems || []);
+      if (response.date) {
+        setLatestImportDate(new Date(response.date));
+      }
     } catch (error) {
       console.error('Error loading new systems:', error);
       setNewSystemsToday([]);
     } finally {
       setLoadingNewSystems(false);
+    }
+  };
+
+  const loadReappearedSystems = async () => {
+    setLoadingReappearedSystems(true);
+    try {
+      const response = await systemsApi.getReappearedSystems();
+      setReappearedSystems(response.systems || []);
+    } catch (error) {
+      console.error('Error loading reappeared systems:', error);
+      setReappearedSystems([]);
+    } finally {
+      setLoadingReappearedSystems(false);
     }
   };
 
@@ -234,20 +256,53 @@ export default function Home() {
               <h2>Welcome to the Tooling Health Tracker</h2>
               <p>Select a system from the list to view its health history and tool reporting status</p>
               
-              {/* Global Health Dashboard */}
-              <HealthDashboard days={30} />
+              {/* Dashboard Tabs */}
+              <div className="dashboard-tabs">
+                <button
+                  className={`tab-button ${activeTab === 'health' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('health')}
+                >
+                  📊 Health Trending
+                </button>
+                <button
+                  className={`tab-button ${activeTab === 'analytics' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('analytics')}
+                >
+                  🔍 Analytics Intelligence
+                </button>
+              </div>
+
+              {/* Tab Content */}
+              {activeTab === 'health' && (
+                <>
+                  {/* Global Health Dashboard */}
+                  <HealthDashboard days={30} />
               
               <div className="dashboard-sections">
-                {/* New Systems Today Section */}
+                {latestImportDate && (
+                  <div className="import-date-banner">
+                    <span className="import-date-label">Latest Import:</span>
+                    <span className="import-date-value">
+                      {latestImportDate.toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                )}
+
+                {/* New Systems Section */}
                 <div className="dashboard-section">
                   <div className="section-header">
-                    <h3>🆕 New Systems Today</h3>
+                    <h3>🆕 New Systems (Never Seen Before)</h3>
                     <span className="badge">{newSystemsToday.length}</span>
                   </div>
                   {loadingNewSystems ? (
                     <div className="section-loading">Loading...</div>
                   ) : newSystemsToday.length === 0 ? (
-                    <div className="section-empty">No new systems added today</div>
+                    <div className="section-empty">No new systems in latest import</div>
                   ) : (
                     <div className="systems-grid">
                       {newSystemsToday.map((system) => (
@@ -259,6 +314,42 @@ export default function Home() {
                           <div className="system-card-name">{system.shortname}</div>
                           {system.env && (
                             <span className={`env-tag env-${system.env}`}>{system.env}</span>
+                          )}
+                          {system.fullname && (
+                            <div className="system-card-fullname">{system.fullname}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Reappeared Systems Section */}
+                <div className="dashboard-section">
+                  <div className="section-header">
+                    <h3>🔄 Reappeared Systems (Back After 15+ Days)</h3>
+                    <span className="badge">{reappearedSystems.length}</span>
+                  </div>
+                  {loadingReappearedSystems ? (
+                    <div className="section-loading">Loading...</div>
+                  ) : reappearedSystems.length === 0 ? (
+                    <div className="section-empty">No systems reappeared in latest import</div>
+                  ) : (
+                    <div className="systems-grid">
+                      {reappearedSystems.map((system, idx) => (
+                        <div
+                          key={idx}
+                          className="system-card clickable"
+                          onClick={() => setSelectedSystem(system)}
+                        >
+                          <div className="system-card-name">{system.shortname}</div>
+                          {system.env && (
+                            <span className={`env-tag env-${system.env}`}>{system.env}</span>
+                          )}
+                          {system.daysSinceLastSeen && (
+                            <div className="system-card-meta">
+                              Was offline for {system.daysSinceLastSeen} days
+                            </div>
                           )}
                           {system.fullname && (
                             <div className="system-card-fullname">{system.fullname}</div>
@@ -326,6 +417,13 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+                </>
+              )}
+
+              {/* Analytics Tab */}
+              {activeTab === 'analytics' && (
+                <AnalyticsDashboard days={30} onSystemClick={setSelectedSystem} />
+              )}
             </div>
           )}
         </section>

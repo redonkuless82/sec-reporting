@@ -31,6 +31,11 @@ export class SystemsController {
     return this.systemsService.getNewSystemsToday();
   }
 
+  @Get('reappeared')
+  async getReappearedSystems() {
+    return this.systemsService.getReappearedSystems();
+  }
+
   @Get('missing')
   async getMissingSystems(@Query('days') days?: string) {
     const daysThreshold = days ? parseInt(days, 10) : 7;

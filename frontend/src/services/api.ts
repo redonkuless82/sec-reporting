@@ -72,6 +72,12 @@ export const systemsApi = {
     return response.data;
   },
 
+  // Get reappeared systems (were inactive 15+ days, now back)
+  getReappearedSystems: async () => {
+    const response = await api.get('/systems/reappeared');
+    return response.data;
+  },
+
   // Get missing systems
   getMissingSystems: async (daysThreshold: number = 7): Promise<MissingSystemsResponse> => {
     const params = new URLSearchParams();
@@ -142,6 +148,66 @@ export const healthApi = {
   // Health check
   check: async () => {
     const response = await api.get('/health');
+    return response.data;
+  },
+};
+
+export const analyticsApi = {
+  // Get analytics summary
+  getSummary: async (days: number = 30, env?: string) => {
+    const params = new URLSearchParams();
+    params.append('days', days.toString());
+    if (env) params.append('env', env);
+    
+    const response = await api.get(`/analytics/summary?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get stability overview
+  getStabilityOverview: async (days: number = 30, env?: string) => {
+    const params = new URLSearchParams();
+    params.append('days', days.toString());
+    if (env) params.append('env', env);
+    
+    const response = await api.get(`/analytics/stability-overview?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get system classification
+  getSystemClassification: async (days: number = 30, env?: string) => {
+    const params = new URLSearchParams();
+    params.append('days', days.toString());
+    if (env) params.append('env', env);
+    
+    const response = await api.get(`/analytics/system-classification?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get R7 gap analysis
+  getR7GapAnalysis: async (env?: string) => {
+    const params = new URLSearchParams();
+    if (env) params.append('env', env);
+    
+    const response = await api.get(`/analytics/r7-gap-analysis?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get recovery status
+  getRecoveryStatus: async (days: number = 30, env?: string) => {
+    const params = new URLSearchParams();
+    params.append('days', days.toString());
+    if (env) params.append('env', env);
+    
+    const response = await api.get(`/analytics/recovery-status?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get system insights
+  getSystemInsights: async (shortname: string, days: number = 30) => {
+    const params = new URLSearchParams();
+    params.append('days', days.toString());
+    
+    const response = await api.get(`/analytics/system-insights/${shortname}?${params.toString()}`);
     return response.data;
   },
 };

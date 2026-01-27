@@ -1586,3 +1586,61 @@
     padding: 1.5rem;
   }
 }
+
+/* Dashboard Tabs - Dark Military Theme */
+.dashboard-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid var(--border-color, #30363d);
+  padding-bottom: 0;
+}
+
+.tab-button {
+  padding: 1rem 2rem;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-muted, #8b949e);
+  transition: all 0.3s ease;
+  position: relative;
+  bottom: -2px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: 'Courier New', monospace;
+}
+
+.tab-button:hover {
+  color: var(--accent-secondary, #79c0ff);
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.tab-button.active {
+  color: var(--accent-primary, #58a6ff);
+  border-bottom-color: var(--accent-primary, #58a6ff);
+  background: rgba(88, 166, 255, 0.1);
+  text-shadow: 0 0 10px rgba(88, 166, 255, 0.5);
+}
+
+@media (max-width: 768px) {
+  .dashboard-tabs {
+    flex-direction: column;
+    gap: 0.5rem;
+    border-bottom: none;
+  }
+  
+  .tab-button {
+    border-bottom: none;
+    border-left: 3px solid transparent;
+    padding: 0.75rem 1rem;
+    text-align: left;
+  }
+  
+  .tab-button.active {
+    border-left-color: var(--accent-primary, #58a6ff);
+    border-bottom-color: transparent;
+  }
+}

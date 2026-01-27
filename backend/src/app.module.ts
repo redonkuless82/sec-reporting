@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import databaseConfig from './config/database.config';
 import { ImportModule } from './modules/import/import.module';
 import { SystemsModule } from './modules/systems/systems.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { System } from './database/entities/system.entity';
 import { DailySnapshot } from './database/entities/daily-snapshot.entity';
 import { AppController } from './app.controller';
@@ -31,6 +32,7 @@ import { AppController } from './app.controller';
     }),
     ImportModule,
     SystemsModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
 })

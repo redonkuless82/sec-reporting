@@ -245,22 +245,36 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
           <div className="card-content">
             <div className="card-label">Total Systems</div>
             <div className="card-value">{summary.totalSystemsNow}</div>
-            <div className={`card-change ${summary.newSystemsDiscovered >= 0 ? 'positive' : 'negative'}`}>
-              {summary.newSystemsDiscovered >= 0 ? '+' : ''}{summary.newSystemsDiscovered} from start
-            </div>
+            {summary.dayOverDay && (
+              <div className={`card-comparison ${summary.dayOverDay.systemsChange >= 0 ? 'positive' : 'negative'}`}>
+                {summary.dayOverDay.systemsChange >= 0 ? '↑' : '↓'} {Math.abs(summary.dayOverDay.systemsChange)} vs yesterday
+              </div>
+            )}
+            {summary.weekOverWeek && (
+              <div className={`card-comparison ${summary.weekOverWeek.systemsChange >= 0 ? 'positive' : 'negative'}`}>
+                {summary.weekOverWeek.systemsChange >= 0 ? '↑' : '↓'} {Math.abs(summary.weekOverWeek.systemsChange)} vs last week
+              </div>
+            )}
           </div>
         </div>
 
         <div className="summary-card">
           <div className="card-icon">✅</div>
           <div className="card-content">
-            <div className="card-label">Health Improvement</div>
+            <div className="card-label">Health Rate</div>
             <div className={`card-value ${summary.healthImprovement >= 0 ? 'positive' : 'negative'}`}>
-              {summary.healthImprovement >= 0 ? '+' : ''}{summary.healthImprovement.toFixed(1)}%
+              {trendData[trendData.length - 1]?.healthRate.toFixed(1)}%
             </div>
-            <div className="card-description">
-              {summary.healthImprovement >= 0 ? 'Improving' : 'Declining'}
-            </div>
+            {summary.dayOverDay && (
+              <div className={`card-comparison ${summary.dayOverDay.healthRateChange >= 0 ? 'positive' : 'negative'}`}>
+                {summary.dayOverDay.healthRateChange >= 0 ? '↑' : '↓'} {Math.abs(summary.dayOverDay.healthRateChange).toFixed(1)}% vs yesterday
+              </div>
+            )}
+            {summary.weekOverWeek && (
+              <div className={`card-comparison ${summary.weekOverWeek.healthRateChange >= 0 ? 'positive' : 'negative'}`}>
+                {summary.weekOverWeek.healthRateChange >= 0 ? '↑' : '↓'} {Math.abs(summary.weekOverWeek.healthRateChange).toFixed(1)}% vs last week
+              </div>
+            )}
           </div>
         </div>
 
@@ -269,7 +283,7 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
           <div className="card-content">
             <div className="card-label">Systems Gained Health</div>
             <div className="card-value positive">{summary.systemsGainedHealth}</div>
-            <div className="card-description">Remediated systems</div>
+            <div className="card-description">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
           </div>
         </div>
 
@@ -278,7 +292,7 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
           <div className="card-content">
             <div className="card-label">Systems Lost Health</div>
             <div className="card-value negative">{summary.systemsLostHealth}</div>
-            <div className="card-description">Need attention</div>
+            <div className="card-description">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
           </div>
         </div>
       </div>
@@ -480,25 +494,25 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
                   </div>
                 </>
               )}
-              {hoveredPoint.toolCompliance && (
+              {hoveredPoint.toolHealth && (
                 <>
                   <div className="tooltip-divider"></div>
                   <div className="tooltip-section-title">Tool-Specific Reporting:</div>
                   <div className="tooltip-section">
                     <div className="tooltip-label">Rapid7:</div>
-                    <div className="tooltip-value">{hoveredPoint.toolCompliance.r7}</div>
+                    <div className="tooltip-value">{hoveredPoint.toolHealth.r7}</div>
                   </div>
                   <div className="tooltip-section">
                     <div className="tooltip-label">Automox:</div>
-                    <div className="tooltip-value">{hoveredPoint.toolCompliance.am}</div>
+                    <div className="tooltip-value">{hoveredPoint.toolHealth.am}</div>
                   </div>
                   <div className="tooltip-section">
                     <div className="tooltip-label">Defender:</div>
-                    <div className="tooltip-value">{hoveredPoint.toolCompliance.df}</div>
+                    <div className="tooltip-value">{hoveredPoint.toolHealth.df}</div>
                   </div>
                   <div className="tooltip-section">
                     <div className="tooltip-label">Intune:</div>
-                    <div className="tooltip-value">{hoveredPoint.toolCompliance.it}</div>
+                    <div className="tooltip-value">{hoveredPoint.toolHealth.it}</div>
                   </div>
                 </>
               )}
@@ -657,29 +671,101 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
             )}
           </div>
           
-          {trendData[trendData.length - 1].toolCompliance && (
+          {trendData[trendData.length - 1].toolHealth && (
             <div className="tool-compliance-breakdown">
               <h4>Tool-Specific Reporting</h4>
               <div className="tool-compliance-grid">
                 <div className="tool-compliance-item">
                   <span className="tool-name">Rapid7:</span>
-                  <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.r7} systems</span>
+                  <span className="tool-count">{trendData[trendData.length - 1].toolHealth.r7} systems</span>
                 </div>
                 <div className="tool-compliance-item">
                   <span className="tool-name">Automox:</span>
-                  <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.am} systems</span>
+                  <span className="tool-count">{trendData[trendData.length - 1].toolHealth.am} systems</span>
                 </div>
                 <div className="tool-compliance-item">
                   <span className="tool-name">Defender:</span>
-                  <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.df} systems</span>
+                  <span className="tool-count">{trendData[trendData.length - 1].toolHealth.df} systems</span>
                 </div>
                 <div className="tool-compliance-item">
                   <span className="tool-name">Intune:</span>
-                  <span className="tool-count">{trendData[trendData.length - 1].toolCompliance.it} systems</span>
+                  <span className="tool-count">{trendData[trendData.length - 1].toolHealth.it} systems</span>
                 </div>
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tool Trending Section */}
+      {summary.toolTrends && (
+        <div className="tool-trending-section">
+          <h3>🔧 Tool Adoption Trends</h3>
+          <div className="tool-trends-grid">
+            <div className="tool-trend-card">
+              <div className="tool-trend-header">
+                <span className="tool-name">Rapid7</span>
+                <span className={`trend-indicator ${summary.toolTrends.r7.trend}`}>
+                  {summary.toolTrends.r7.trend === 'up' && '↑'}
+                  {summary.toolTrends.r7.trend === 'down' && '↓'}
+                  {summary.toolTrends.r7.trend === 'stable' && '→'}
+                </span>
+              </div>
+              <div className="tool-trend-value">{summary.toolTrends.r7.current} systems</div>
+              <div className={`tool-trend-change ${summary.toolTrends.r7.change >= 0 ? 'positive' : 'negative'}`}>
+                {summary.toolTrends.r7.change >= 0 ? '+' : ''}{summary.toolTrends.r7.change} ({summary.toolTrends.r7.changePercent >= 0 ? '+' : ''}{summary.toolTrends.r7.changePercent.toFixed(1)}%)
+              </div>
+              <div className="tool-trend-label">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+            </div>
+
+            <div className="tool-trend-card">
+              <div className="tool-trend-header">
+                <span className="tool-name">Automox</span>
+                <span className={`trend-indicator ${summary.toolTrends.am.trend}`}>
+                  {summary.toolTrends.am.trend === 'up' && '↑'}
+                  {summary.toolTrends.am.trend === 'down' && '↓'}
+                  {summary.toolTrends.am.trend === 'stable' && '→'}
+                </span>
+              </div>
+              <div className="tool-trend-value">{summary.toolTrends.am.current} systems</div>
+              <div className={`tool-trend-change ${summary.toolTrends.am.change >= 0 ? 'positive' : 'negative'}`}>
+                {summary.toolTrends.am.change >= 0 ? '+' : ''}{summary.toolTrends.am.change} ({summary.toolTrends.am.changePercent >= 0 ? '+' : ''}{summary.toolTrends.am.changePercent.toFixed(1)}%)
+              </div>
+              <div className="tool-trend-label">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+            </div>
+
+            <div className="tool-trend-card">
+              <div className="tool-trend-header">
+                <span className="tool-name">Defender</span>
+                <span className={`trend-indicator ${summary.toolTrends.df.trend}`}>
+                  {summary.toolTrends.df.trend === 'up' && '↑'}
+                  {summary.toolTrends.df.trend === 'down' && '↓'}
+                  {summary.toolTrends.df.trend === 'stable' && '→'}
+                </span>
+              </div>
+              <div className="tool-trend-value">{summary.toolTrends.df.current} systems</div>
+              <div className={`tool-trend-change ${summary.toolTrends.df.change >= 0 ? 'positive' : 'negative'}`}>
+                {summary.toolTrends.df.change >= 0 ? '+' : ''}{summary.toolTrends.df.change} ({summary.toolTrends.df.changePercent >= 0 ? '+' : ''}{summary.toolTrends.df.changePercent.toFixed(1)}%)
+              </div>
+              <div className="tool-trend-label">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+            </div>
+
+            <div className="tool-trend-card">
+              <div className="tool-trend-header">
+                <span className="tool-name">Intune</span>
+                <span className={`trend-indicator ${summary.toolTrends.it.trend}`}>
+                  {summary.toolTrends.it.trend === 'up' && '↑'}
+                  {summary.toolTrends.it.trend === 'down' && '↓'}
+                  {summary.toolTrends.it.trend === 'stable' && '→'}
+                </span>
+              </div>
+              <div className="tool-trend-value">{summary.toolTrends.it.current} systems</div>
+              <div className={`tool-trend-change ${summary.toolTrends.it.change >= 0 ? 'positive' : 'negative'}`}>
+                {summary.toolTrends.it.change >= 0 ? '+' : ''}{summary.toolTrends.it.change} ({summary.toolTrends.it.changePercent >= 0 ? '+' : ''}{summary.toolTrends.it.changePercent.toFixed(1)}%)
+              </div>
+              <div className="tool-trend-label">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -690,11 +776,19 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
           <div className="insight-card">
             <div className="insight-icon">🔍</div>
             <div className="insight-content">
-              <div className="insight-title">What This Shows</div>
+              <div className="insight-title">Health Scoring</div>
               <div className="insight-text">
-                This dashboard tracks tooling health across all systems over time. The stacked area chart shows 
-                the distribution of systems by health level, while the blue line shows the overall 
-                health rate percentage.
+                Health rate uses <strong>fractional scoring</strong>:
+                <br />
+                • 3/3 tools = 100% (1.0 point)
+                <br />
+                • 2/3 tools = 66.7% (0.67 points)
+                <br />
+                • 1/3 tools = 33.3% (0.33 points)
+                <br />
+                • 0/3 tools = 0% (0 points)
+                <br />
+                <em>Overall rate = Total points / Active systems</em>
               </div>
             </div>
           </div>
@@ -727,6 +821,8 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
                 • <strong>Existing systems</strong> gaining health (remediation success)
                 <br />
                 • <strong>Existing systems</strong> losing health (need investigation)
+                <br />
+                <em>Fake/test systems are excluded from all calculations.</em>
               </div>
             </div>
           </div>

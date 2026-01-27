@@ -133,6 +133,7 @@ export interface MissingSystemsResponse {
 export interface HealthTrendDataPoint {
   date: string;
   totalSystems: number;
+  activeSystems: number;
   fullyHealthy: number;
   partiallyHealthy: number;
   unhealthy: number;
@@ -140,12 +141,28 @@ export interface HealthTrendDataPoint {
   newSystems: number;
   existingSystems: number;
   healthRate: number;
-  toolCompliance: {
+  toolHealth: {
     r7: number;
     am: number;
     df: number;
     it: number;
   };
+}
+
+export interface ComparisonMetrics {
+  healthRateChange: number;
+  systemsChange: number;
+  fullyHealthyChange: number;
+  partiallyHealthyChange: number;
+  unhealthyChange: number;
+  inactiveChange: number;
+}
+
+export interface ToolTrend {
+  current: number;
+  change: number;
+  changePercent: number;
+  trend: 'up' | 'down' | 'stable';
 }
 
 export interface HealthTrendingSummary {
@@ -155,6 +172,14 @@ export interface HealthTrendingSummary {
   newSystemsDiscovered: number;
   systemsLostHealth: number;
   systemsGainedHealth: number;
+  dayOverDay: ComparisonMetrics | null;
+  weekOverWeek: ComparisonMetrics | null;
+  toolTrends: {
+    r7: ToolTrend;
+    am: ToolTrend;
+    df: ToolTrend;
+    it: ToolTrend;
+  };
 }
 
 export interface HealthTrendingResponse {

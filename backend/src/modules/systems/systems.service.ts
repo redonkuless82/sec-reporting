@@ -67,6 +67,32 @@ export class SystemsService {
     }
   }
 
+  /**
+   * Calculate fractional health score for a system
+   * Returns a score between 0 and 1 based on tool coverage
+   * - 3/3 tools = 1.0 (100%)
+   * - 2/3 tools = 0.667 (66.7%)
+   * - 1/3 tools = 0.333 (33.3%)
+   * - 0/3 tools = 0.0 (0%)
+   * - Inactive = 0.0 (excluded from calculations)
+   */
+  private calculateHealthScore(snapshot: DailySnapshot, referenceDate: Date): number {
+    // First check if system is active in Intune
+    if (!this.isSystemActive(snapshot, referenceDate)) {
+      return 0; // Inactive systems don't contribute to health score
+    }
+
+    // Count health tools (R7, AM, DF - VMware excluded)
+    const healthTools = [
+      snapshot.r7Found,
+      snapshot.amFound,
+      snapshot.dfFound,
+    ].filter(Boolean).length;
+
+    // Return fractional score
+    return healthTools / 3;
+  }
+
   async findAll(search?: string, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
     
@@ -362,7 +388,8 @@ export class SystemsService {
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :startDate', { startDate })
-      .andWhere('snapshot.importDate <= :endDate', { endDate });
+      .andWhere('snapshot.importDate <= :endDate', { endDate })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)'); // Exclude fake systems
 
     // Apply environment filter if provided
     if (env) {
@@ -428,6 +455,7 @@ export class SystemsService {
       let inactive = 0; // Not in Intune or Intune lag > 15 days
       let newSystems = 0;
       let existingSystems = 0;
+      let totalHealthPoints = 0; // Sum of fractional health scores
 
       // Track tool-specific health (VMware excluded)
       const toolHealth = {
@@ -445,6 +473,9 @@ export class SystemsService {
         // Calculate health status using helper function
         const healthStatus = this.calculateSystemHealth(snapshot, referenceDate);
         
+        // Calculate fractional health score
+        const healthScore = this.calculateHealthScore(snapshot, referenceDate);
+        
         // Categorize health level
         if (healthStatus === 'fully') {
           fullyHealthy++;
@@ -454,6 +485,11 @@ export class SystemsService {
           unhealthy++;
         } else if (healthStatus === 'inactive') {
           inactive++;
+        }
+
+        // Add to total health points (only for active systems)
+        if (healthStatus !== 'inactive') {
+          totalHealthPoints += healthScore;
         }
 
         // Track tool-specific health (only for active systems)
@@ -491,9 +527,9 @@ export class SystemsService {
       const activeSystems = fullyHealthy + partiallyHealthy + unhealthy;
       const totalSystems = latestSnapshotPerSystem.size;
       
-      // Health rate based on active systems only
+      // Health rate using fractional scoring: (total health points / active systems) * 100
       const healthRate = activeSystems > 0
-        ? ((fullyHealthy + partiallyHealthy) / activeSystems) * 100
+        ? (totalHealthPoints / activeSystems) * 100
         : 0;
 
       trendData.push({
@@ -515,7 +551,7 @@ export class SystemsService {
     const firstDay = trendData[0];
     const lastDay = trendData[trendData.length - 1];
     
-    // Calculate systems that gained or lost health
+    // Calculate systems that gained or lost health (comparing first to last day of period)
     let systemsGainedHealth = 0;
     let systemsLostHealth = 0;
 
@@ -544,36 +580,64 @@ export class SystemsService {
       const firstDayHealth = new Map<string, number>();
       const firstDateRef = new Date(dates[0]);
       firstDayLatest.forEach((s) => {
-        const healthStatus = this.calculateSystemHealth(s, firstDateRef);
-        // Convert health status to numeric score for comparison
-        let score = 0;
-        if (healthStatus === 'fully') score = 3;
-        else if (healthStatus === 'partially') score = 2;
-        else if (healthStatus === 'unhealthy') score = 1;
-        else if (healthStatus === 'inactive') score = 0;
-        firstDayHealth.set(s.shortname, score);
+        const healthScore = this.calculateHealthScore(s, firstDateRef);
+        firstDayHealth.set(s.shortname, healthScore);
       });
 
       const lastDateRef = new Date(dates[dates.length - 1]);
       lastDayLatest.forEach((s) => {
-        const healthStatus = this.calculateSystemHealth(s, lastDateRef);
-        let score = 0;
-        if (healthStatus === 'fully') score = 3;
-        else if (healthStatus === 'partially') score = 2;
-        else if (healthStatus === 'unhealthy') score = 1;
-        else if (healthStatus === 'inactive') score = 0;
-        
+        const healthScore = this.calculateHealthScore(s, lastDateRef);
         const previousScore = firstDayHealth.get(s.shortname);
         
         if (previousScore !== undefined) {
-          if (score > previousScore) {
+          if (healthScore > previousScore) {
             systemsGainedHealth++;
-          } else if (score < previousScore) {
+          } else if (healthScore < previousScore) {
             systemsLostHealth++;
           }
         }
       });
     }
+
+    // Calculate day-over-day comparison (yesterday vs today)
+    let dayOverDay = null;
+    if (trendData.length >= 2) {
+      const yesterday = trendData[trendData.length - 2];
+      const today = trendData[trendData.length - 1];
+      
+      dayOverDay = {
+        healthRateChange: Math.round((today.healthRate - yesterday.healthRate) * 100) / 100,
+        systemsChange: today.totalSystems - yesterday.totalSystems,
+        fullyHealthyChange: today.fullyHealthy - yesterday.fullyHealthy,
+        partiallyHealthyChange: today.partiallyHealthy - yesterday.partiallyHealthy,
+        unhealthyChange: today.unhealthy - yesterday.unhealthy,
+        inactiveChange: today.inactive - yesterday.inactive,
+      };
+    }
+
+    // Calculate week-over-week comparison (7 days ago vs today)
+    let weekOverWeek = null;
+    if (trendData.length >= 8) {
+      const weekAgo = trendData[trendData.length - 8];
+      const today = trendData[trendData.length - 1];
+      
+      weekOverWeek = {
+        healthRateChange: Math.round((today.healthRate - weekAgo.healthRate) * 100) / 100,
+        systemsChange: today.totalSystems - weekAgo.totalSystems,
+        fullyHealthyChange: today.fullyHealthy - weekAgo.fullyHealthy,
+        partiallyHealthyChange: today.partiallyHealthy - weekAgo.partiallyHealthy,
+        unhealthyChange: today.unhealthy - weekAgo.unhealthy,
+        inactiveChange: today.inactive - weekAgo.inactive,
+      };
+    }
+
+    // Calculate tool-specific trends
+    const toolTrends = {
+      r7: this.calculateToolTrend(trendData, 'r7'),
+      am: this.calculateToolTrend(trendData, 'am'),
+      df: this.calculateToolTrend(trendData, 'df'),
+      it: this.calculateToolTrend(trendData, 'it'),
+    };
 
     const summary = {
       totalSystemsNow: lastDay.totalSystems,
@@ -582,6 +646,9 @@ export class SystemsService {
       newSystemsDiscovered: lastDay.totalSystems - firstDay.totalSystems,
       systemsLostHealth,
       systemsGainedHealth,
+      dayOverDay,
+      weekOverWeek,
+      toolTrends,
     };
 
     return {
@@ -589,6 +656,43 @@ export class SystemsService {
       trendData,
       summary,
     };
+  }
+
+  /**
+   * Calculate trend for a specific tool
+   */
+  private calculateToolTrend(trendData: any[], tool: 'r7' | 'am' | 'df' | 'it') {
+    if (trendData.length === 0) {
+      return { current: 0, change: 0, changePercent: 0, trend: 'stable' as const };
+    }
+
+    const lastDay = trendData[trendData.length - 1];
+    const current = lastDay.toolHealth[tool];
+
+    if (trendData.length < 2) {
+      return { current, change: 0, changePercent: 0, trend: 'stable' as const };
+    }
+
+    const firstDay = trendData[0];
+    const previous = firstDay.toolHealth[tool];
+    const change = current - previous;
+    
+    // Fix percentage calculation - cap at reasonable values
+    let changePercent = 0;
+    if (previous > 0) {
+      changePercent = Math.round((change / previous) * 10000) / 100;
+      // Cap percentage at +/-100% for display purposes
+      changePercent = Math.max(-100, Math.min(100, changePercent));
+    } else if (change > 0) {
+      // If previous was 0 and now we have systems, show as 100% increase
+      changePercent = 100;
+    }
+
+    let trend: 'up' | 'down' | 'stable' = 'stable';
+    if (change > 0) trend = 'up';
+    else if (change < 0) trend = 'down';
+
+    return { current, change, changePercent, trend };
   }
 
   async getSystemsByHealthCategory(date: string, category: 'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new', env?: string) {
@@ -603,7 +707,8 @@ export class SystemsService {
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :targetDate', { targetDate })
-      .andWhere('snapshot.importDate < :nextDay', { nextDay });
+      .andWhere('snapshot.importDate < :nextDay', { nextDay })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)'); // Exclude fake systems
 
     // Apply environment filter if provided
     if (env) {
@@ -730,6 +835,78 @@ export class SystemsService {
 
     return {
       environments: environments.map(e => e.env).filter(Boolean),
+    };
+  }
+
+  async getReappearedSystems() {
+    // Get the latest import date
+    const latestImportDate = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('MAX(snapshot.importDate)', 'maxDate')
+      .getRawOne();
+
+    if (!latestImportDate?.maxDate) {
+      return {
+        count: 0,
+        systems: [],
+        date: null,
+      };
+    }
+
+    const today = new Date(latestImportDate.maxDate);
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Get all systems in today's snapshot
+    const systemsToday = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('DISTINCT snapshot.shortname', 'shortname')
+      .where('snapshot.importDate >= :today', { today })
+      .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .getRawMany();
+
+    const reappearedSystems = [];
+
+    // For each system in today's snapshot
+    for (const sys of systemsToday) {
+      const shortname = sys.shortname;
+
+      // Get the most recent snapshot before today
+      const previousSnapshot = await this.snapshotRepository
+        .createQueryBuilder('snapshot')
+        .where('snapshot.shortname = :shortname', { shortname })
+        .andWhere('snapshot.importDate < :today', { today })
+        .orderBy('snapshot.importDate', 'DESC')
+        .limit(1)
+        .getOne();
+
+      // If there was a previous snapshot
+      if (previousSnapshot) {
+        const daysSinceLastSeen = Math.floor(
+          (today.getTime() - new Date(previousSnapshot.importDate).getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        // If system was inactive (15+ days) and now reappeared
+        if (daysSinceLastSeen > this.INTUNE_INACTIVE_DAYS) {
+          const system = await this.systemRepository.findOne({ where: { shortname } });
+          if (system) {
+            reappearedSystems.push({
+              ...system,
+              daysSinceLastSeen,
+              lastSeenDate: previousSnapshot.importDate,
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      count: reappearedSystems.length,
+      systems: reappearedSystems,
+      date: today,
     };
   }
 }
