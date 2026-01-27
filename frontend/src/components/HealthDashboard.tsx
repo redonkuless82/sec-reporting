@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { systemsApi } from '../services/api';
+import { useEnvironment } from '../contexts/EnvironmentContext';
 import type { HealthTrendingResponse, HealthTrendDataPoint } from '../types';
 import HealthDrillDownModal from './HealthDrillDownModal';
 import './ComplianceDashboard.css';
@@ -13,9 +14,6 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(days);
-  const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
-  const [environments, setEnvironments] = useState<string[]>([]);
-  const [environmentsLoading, setEnvironmentsLoading] = useState(true);
   const [hoveredPoint, setHoveredPoint] = useState<HealthTrendDataPoint | null>(null);
   const [hoveredPosition, setHoveredPosition] = useState<{ x: number; y: number } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -23,27 +21,12 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
   const [modalCategoryLabel, setModalCategoryLabel] = useState('');
   const [modalDate, setModalDate] = useState('');
 
-  useEffect(() => {
-    loadEnvironments();
-  }, []);
+  // Use global environment context
+  const { selectedEnvironment } = useEnvironment();
 
   useEffect(() => {
     loadData();
   }, [selectedPeriod, selectedEnvironment]);
-
-  const loadEnvironments = async () => {
-    setEnvironmentsLoading(true);
-    try {
-      const response = await systemsApi.getEnvironments();
-      setEnvironments(response.environments);
-    } catch (err) {
-      console.error('Error loading environments:', err);
-      // If loading fails, continue with empty list
-      setEnvironments([]);
-    } finally {
-      setEnvironmentsLoading(false);
-    }
-  };
 
   const loadData = async () => {
     setLoading(true);
@@ -177,32 +160,14 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
       <div className="dashboard-header">
         <div className="header-left">
           <h2>📊 Global Health Trending</h2>
-          <p className="subtitle">Track tooling health progress across all systems</p>
+          <p className="subtitle">
+            Track tooling health progress across all systems
+            {selectedEnvironment && (
+              <span className="env-filter-indicator"> • Filtered by: {selectedEnvironment}</span>
+            )}
+          </p>
         </div>
         <div className="header-controls">
-          <div className="environment-selector">
-            <label htmlFor="env-select">Environment:</label>
-            <select
-              id="env-select"
-              value={selectedEnvironment}
-              onChange={(e) => setSelectedEnvironment(e.target.value)}
-              className="env-select"
-              disabled={environmentsLoading}
-            >
-              <option value="">All Environments</option>
-              {environmentsLoading ? (
-                <option disabled>Loading environments...</option>
-              ) : environments.length === 0 ? (
-                <option disabled>No environments found</option>
-              ) : (
-                environments.map((env) => (
-                  <option key={env} value={env}>
-                    {env}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
           <div className="period-selector">
             <button
               className={selectedPeriod === 7 ? 'active' : ''}

@@ -1644,3 +1644,35 @@
     border-bottom-color: transparent;
   }
 }
+
+/* Dashboard View - Full Width for Health and Analytics */
+.dashboard-view {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+  background: #f5f7fa;
+  width: 100%;
+}
+
+/* Environment Filter Indicator */
+.env-filter-indicator {
+  color: #667eea;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.home-page {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+/* Adjust header for navigation bar */
+.app-header {
+  padding: 1.5rem 2rem;
+}
+
+@media (max-width: 768px) {
+  .dashboard-view {
+    padding: 1rem;
+  }
+}
