@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { analyticsApi, systemsApi } from '../services/api';
 import { useEnvironment } from '../contexts/EnvironmentContext';
-import AnalyticsDrillDownModal from './AnalyticsDrillDownModal';
 import type { System } from '../types';
 import './ComplianceDashboard.css';
 import './AnalyticsDashboard.css';
@@ -16,9 +16,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(days);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalClassification, setModalClassification] = useState<'STABLE_HEALTHY' | 'STABLE_UNHEALTHY' | 'RECOVERING' | 'DEGRADING' | 'FLAPPING' | null>(null);
-  const [modalLabel, setModalLabel] = useState('');
+  const navigate = useNavigate();
 
   // Use global environment context
   const { selectedEnvironment } = useEnvironment();
@@ -31,13 +29,18 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
     classification: 'STABLE_HEALTHY' | 'STABLE_UNHEALTHY' | 'RECOVERING' | 'DEGRADING' | 'FLAPPING',
     label: string
   ) => {
-    setModalClassification(classification);
-    setModalLabel(label);
-    setModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setModalOpen(false);
+    // Navigate to detail page with query parameters
+    const params = new URLSearchParams({
+      classification,
+      label,
+      days: selectedPeriod.toString(),
+    });
+    
+    if (selectedEnvironment) {
+      params.append('env', selectedEnvironment);
+    }
+    
+    navigate(`/analytics/details?${params.toString()}`);
   };
 
   const loadData = async () => {
@@ -396,7 +399,27 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
           <h3>💡 Critical Insights</h3>
           <div className="insights-list">
             {criticalInsights.map((insight: any, index: number) => (
-              <div key={index} className={`insight-card insight-${insight.type}`}>
+              <div
+                key={index}
+                className={`insight-card insight-${insight.type} ${insight.systems && insight.systems.length > 0 ? 'clickable' : ''}`}
+                onClick={() => {
+                  if (insight.systems && insight.systems.length > 0) {
+                    // Determine classification based on insight title
+                    let classification: 'STABLE_HEALTHY' | 'STABLE_UNHEALTHY' | 'RECOVERING' | 'DEGRADING' | 'FLAPPING' | null = null;
+                    if (insight.title.includes('Requires Investigation')) {
+                      classification = 'STABLE_UNHEALTHY';
+                    } else if (insight.title.includes('Stuck Recovery')) {
+                      classification = 'RECOVERING';
+                    }
+                    if (classification) {
+                      handleClassificationClick(classification, `💡 ${insight.title}`);
+                    }
+                  }
+                }}
+                role={insight.systems && insight.systems.length > 0 ? 'button' : undefined}
+                tabIndex={insight.systems && insight.systems.length > 0 ? 0 : undefined}
+                style={{ cursor: insight.systems && insight.systems.length > 0 ? 'pointer' : 'default' }}
+              >
                 <div className="insight-header">
                   <span className="insight-icon">
                     {insight.type === 'warning' && '⚠️'}
@@ -411,6 +434,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
                   <div className="insight-systems">
                     <strong>Systems:</strong> {insight.systems.slice(0, 5).join(', ')}
                     {insight.systems.length > 5 && ` and ${insight.systems.length - 5} more...`}
+                    <span className="click-hint"> • Click to view all</span>
                   </div>
                 )}
               </div>
@@ -465,12 +489,20 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
                 Systems recovering within expected timeframe (&lt; 2 days)
               </div>
             </div>
-            <div className="recovery-stat">
+            <div
+              className="recovery-stat clickable"
+              onClick={() => handleClassificationClick('RECOVERING', '⚠️ Stuck Recovery Systems')}
+              role="button"
+              tabIndex={0}
+              style={{ cursor: 'pointer' }}
+              title="Click to view all stuck recovery systems"
+            >
               <div className="recovery-label">Stuck Recovery</div>
               <div className="recovery-value warning">{recoverySummary.stuckRecovery}</div>
               <div className="recovery-description">
                 Systems taking longer than expected (&gt; 3 days) - may need intervention
               </div>
+              <div className="click-to-view">Click to view details</div>
             </div>
             <div className="recovery-stat">
               <div className="recovery-label">Avg Recovery Time</div>
@@ -479,6 +511,13 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
                 Average time for systems to fully recover
               </div>
             </div>
+          </div>
+          
+          {/* Recovery Details Note */}
+          <div className="recovery-details-note">
+            <strong>💡 Recovery Intelligence:</strong> The system tracks when systems start improving
+            and monitors their progress. Normal recovery completes within 2 days, while stuck recovery
+            indicates systems that may need manual intervention after 3+ days.
           </div>
         </div>
       )}
@@ -494,7 +533,29 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
                   <span className={`priority-badge priority-${item.priority}`}>
                     {item.priority.toUpperCase()}
                   </span>
-                  <span className="action-category">{item.category}</span>
+                  <span
+                    className="action-category clickable"
+                    onClick={() => {
+                      // Determine classification based on action category
+                      let classification: 'STABLE_HEALTHY' | 'STABLE_UNHEALTHY' | 'RECOVERING' | 'DEGRADING' | 'FLAPPING' | null = null;
+                      if (item.category.includes('Chronic Issues')) {
+                        classification = 'STABLE_UNHEALTHY';
+                      } else if (item.category.includes('Stuck Recovery')) {
+                        classification = 'RECOVERING';
+                      } else if (item.category.includes('Degrading')) {
+                        classification = 'DEGRADING';
+                      }
+                      if (classification) {
+                        handleClassificationClick(classification, `🎯 ${item.category}`);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view all affected systems"
+                  >
+                    {item.category}
+                  </span>
                   <span className="action-count">{item.systemCount} systems</span>
                 </div>
                 <div className="action-description">{item.description}</div>
@@ -507,7 +568,10 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
                           <span
                             key={idx}
                             className="system-tag clickable"
-                            onClick={() => handleSystemClick(system)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSystemClick(system);
+                            }}
                             role="button"
                             tabIndex={0}
                             onKeyDown={(e) => {
@@ -570,16 +634,6 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
         </div>
       </div>
 
-      {/* Drill-Down Modal */}
-      <AnalyticsDrillDownModal
-        isOpen={modalOpen}
-        onClose={handleCloseModal}
-        classification={modalClassification}
-        classificationLabel={modalLabel}
-        days={selectedPeriod}
-        environment={selectedEnvironment || undefined}
-        onSystemClick={onSystemClick}
-      />
     </div>
   );
 }

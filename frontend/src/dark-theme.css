@@ -8,15 +8,25 @@
   --text-primary: #f0f6fc;
   --text-secondary: #c9d1d9;
   --text-muted: #8b949e;
+  --text-bright: #ffffff;
   
   --accent-primary: #58a6ff;
   --accent-secondary: #79c0ff;
   --accent-success: #3fb950;
-  --accent-warning: #d29922;
+  --accent-warning: #f5a623;
   --accent-danger: #f85149;
   
   --border-color: #30363d;
   --border-hover: #484f58;
+  
+  /* Ensure high contrast for readability */
+  --card-text-primary: #ffffff;
+  --card-text-secondary: #e6edf3;
+  --card-text-muted: #9198a1;
+  
+  /* Card backgrounds - override any light theme defaults */
+  --card-bg: #161b22;
+  --card-bg-dark: #161b22;
 }
 
 * {

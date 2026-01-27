@@ -1,7 +1,7 @@
 /* App Container */
 .app {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--bg-primary, #0d1117);
 }
 
 /* Header */
@@ -842,7 +842,7 @@
   flex: 1;
   padding: 2rem;
   overflow-y: auto;
-  background: #f5f7fa;
+  background: var(--bg-primary, #0d1117);
 }
 
 .panel-header {
@@ -1134,7 +1134,7 @@
   flex: 1;
   padding: 2rem;
   overflow-y: auto;
-  background: #f5f7fa;
+  background: var(--bg-primary, #0d1117);
 }
 
 .panel-header {
@@ -1650,7 +1650,7 @@
   flex: 1;
   padding: 2rem;
   overflow-y: auto;
-  background: #f5f7fa;
+  background: var(--bg-primary, #0d1117);
   width: 100%;
 }
 
@@ -1663,7 +1663,7 @@
 
 .home-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--bg-primary, #0d1117);
 }
 
 /* Adjust header for navigation bar */

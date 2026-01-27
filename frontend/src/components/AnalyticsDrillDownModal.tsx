@@ -13,6 +13,26 @@ interface AnalyticsDrillDownModalProps {
   onSystemClick?: (system: System) => void;
 }
 
+interface SystemWithDetails {
+  shortname: string;
+  env: string | null;
+  stabilityScore: number;
+  classification: string;
+  currentHealthStatus: string;
+  recoveryStatus: string;
+  recoveryDays: number | null;
+  isActionable: boolean;
+  actionReason: string | null;
+  healthHistory: {
+    date: Date;
+    healthStatus: string;
+    r7Found: boolean;
+    amFound: boolean;
+    dfFound: boolean;
+    itFound: boolean;
+  }[];
+}
+
 export default function AnalyticsDrillDownModal({
   isOpen,
   onClose,
@@ -22,7 +42,7 @@ export default function AnalyticsDrillDownModal({
   environment,
   onSystemClick,
 }: AnalyticsDrillDownModalProps) {
-  const [systems, setSystems] = useState<any[]>([]);
+  const [systems, setSystems] = useState<SystemWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +65,42 @@ export default function AnalyticsDrillDownModal({
         (system: any) => system.classification === classification
       );
       
-      setSystems(filteredSystems);
+      // Fetch detailed insights for each system to get tool status
+      const systemsWithDetails = await Promise.all(
+        filteredSystems.map(async (system: any) => {
+          try {
+            const insights = await analyticsApi.getSystemInsights(system.shortname, days);
+            return {
+              shortname: system.shortname,
+              env: system.env,
+              stabilityScore: system.stabilityScore,
+              classification: system.classification,
+              currentHealthStatus: system.currentHealthStatus,
+              recoveryStatus: system.recoveryStatus,
+              recoveryDays: system.recoveryDays,
+              isActionable: system.isActionable,
+              actionReason: system.actionReason,
+              healthHistory: insights.healthHistory || [],
+            };
+          } catch (err) {
+            console.error(`Error loading insights for ${system.shortname}:`, err);
+            return {
+              shortname: system.shortname,
+              env: system.env,
+              stabilityScore: system.stabilityScore,
+              classification: system.classification,
+              currentHealthStatus: system.currentHealthStatus,
+              recoveryStatus: system.recoveryStatus,
+              recoveryDays: system.recoveryDays,
+              isActionable: system.isActionable,
+              actionReason: system.actionReason,
+              healthHistory: [],
+            };
+          }
+        })
+      );
+      
+      setSystems(systemsWithDetails);
     } catch (err) {
       console.error('Error loading systems:', err);
       setError('Failed to load systems');
@@ -65,6 +120,29 @@ export default function AnalyticsDrillDownModal({
     } catch (error) {
       console.error('Error loading system:', error);
     }
+  };
+
+  const getToolStatus = (system: SystemWithDetails) => {
+    // Get the most recent health history entry
+    const latestHealth = system.healthHistory && system.healthHistory.length > 0
+      ? system.healthHistory[system.healthHistory.length - 1]
+      : null;
+
+    if (!latestHealth) {
+      return {
+        r7: false,
+        am: false,
+        df: false,
+        it: false,
+      };
+    }
+
+    return {
+      r7: latestHealth.r7Found,
+      am: latestHealth.amFound,
+      df: latestHealth.dfFound,
+      it: latestHealth.itFound,
+    };
   };
 
   if (!isOpen) return null;
@@ -137,73 +215,101 @@ export default function AnalyticsDrillDownModal({
                 <div className="table-header">
                   <div className="col-shortname">System</div>
                   <div className="col-env">Environment</div>
-                  <div className="col-stability">Stability Score</div>
-                  <div className="col-changes">Health Changes</div>
-                  <div className="col-stable-days">Stable Days</div>
                   <div className="col-status">Current Status</div>
-                  <div className="col-action">Action Needed</div>
+                  <div className="col-tools">Tool Status</div>
+                  <div className="col-recovery">Recovery Info</div>
+                  <div className="col-action">Action Reason</div>
                 </div>
 
                 <div className="table-body">
-                  {systems.map((system: any, index: number) => (
-                    <div key={index} className="table-row">
-                      <div className="col-shortname">
-                        <span
-                          className="system-name clickable"
-                          onClick={() => handleSystemClick(system.shortname)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              handleSystemClick(system.shortname);
-                            }
-                          }}
-                          title="Click to view system details"
-                        >
-                          {system.shortname}
-                        </span>
+                  {systems.map((system, index) => {
+                    const toolStatus = getToolStatus(system);
+                    
+                    return (
+                      <div key={index} className="table-row">
+                        <div className="col-shortname">
+                          <span
+                            className="system-name clickable"
+                            onClick={() => handleSystemClick(system.shortname)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSystemClick(system.shortname);
+                              }
+                            }}
+                            title="Click to view system details"
+                          >
+                            {system.shortname}
+                          </span>
+                        </div>
+                        <div className="col-env">
+                          {system.env ? (
+                            <span className={`env-tag env-${system.env}`}>{system.env}</span>
+                          ) : (
+                            <span className="env-tag-empty">-</span>
+                          )}
+                        </div>
+                        <div className="col-status">
+                          <span className={`health-status status-${system.currentHealthStatus}`}>
+                            {system.currentHealthStatus}
+                          </span>
+                          <div className="status-detail">
+                            Stability: {system.stabilityScore}/100
+                          </div>
+                        </div>
+                        <div className="col-tools">
+                          <div className="tool-status-list">
+                            <div className={`tool-item ${toolStatus.r7 ? 'tool-found' : 'tool-missing'}`}>
+                              {toolStatus.r7 ? '✅' : '❌'} Rapid7
+                            </div>
+                            <div className={`tool-item ${toolStatus.am ? 'tool-found' : 'tool-missing'}`}>
+                              {toolStatus.am ? '✅' : '❌'} Automox
+                            </div>
+                            <div className={`tool-item ${toolStatus.df ? 'tool-found' : 'tool-missing'}`}>
+                              {toolStatus.df ? '✅' : '❌'} Defender
+                            </div>
+                            <div className={`tool-item ${toolStatus.it ? 'tool-found' : 'tool-missing'}`}>
+                              {toolStatus.it ? '✅' : '❌'} Intune
+                            </div>
+                          </div>
+                        </div>
+                        <div className="col-recovery">
+                          {system.recoveryStatus && system.recoveryStatus !== 'NOT_APPLICABLE' ? (
+                            <div className="recovery-info">
+                              <span className={`recovery-status status-${system.recoveryStatus.toLowerCase()}`}>
+                                {system.recoveryStatus.replace(/_/g, ' ')}
+                              </span>
+                              {system.recoveryDays !== null && (
+                                <div className="recovery-days">
+                                  {system.recoveryDays} days in recovery
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="no-recovery">-</span>
+                          )}
+                        </div>
+                        <div className="col-action">
+                          {system.isActionable && system.actionReason ? (
+                            <div className="action-reason">
+                              <span className="action-icon">⚠️</span>
+                              <span className="action-text">{system.actionReason}</span>
+                            </div>
+                          ) : (
+                            <span className="no-action">✓ No action needed</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="col-env">
-                        {system.env ? (
-                          <span className={`env-tag env-${system.env}`}>{system.env}</span>
-                        ) : (
-                          <span className="env-tag-empty">-</span>
-                        )}
-                      </div>
-                      <div className="col-stability">
-                        <span className={`stability-score score-${Math.floor(system.stabilityScore / 20)}`}>
-                          {system.stabilityScore}
-                        </span>
-                      </div>
-                      <div className="col-changes">
-                        <span className="changes-count">{system.healthChangeCount}</span>
-                        <span className="changes-label">in {system.daysTracked} days</span>
-                      </div>
-                      <div className="col-stable-days">
-                        <span className="stable-days">{system.consecutiveDaysStable}</span>
-                        <span className="days-label">days</span>
-                      </div>
-                      <div className="col-status">
-                        <span className={`health-status status-${system.currentHealthStatus}`}>
-                          {system.currentHealthStatus}
-                        </span>
-                      </div>
-                      <div className="col-action">
-                        {system.isActionable ? (
-                          <span className="action-required">⚠️ Yes</span>
-                        ) : (
-                          <span className="action-not-required">✓ No</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
-              {systems.some((s: any) => s.isActionable) && (
+              {systems.some((s) => s.isActionable) && (
                 <div className="actionable-systems-note">
-                  <strong>⚠️ Action Required:</strong> {systems.filter((s: any) => s.isActionable).length} system(s) 
+                  <strong>⚠️ Action Required:</strong> {systems.filter((s) => s.isActionable).length} system(s) 
                   in this category need investigation
                 </div>
               )}
