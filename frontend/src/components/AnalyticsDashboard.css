@@ -112,6 +112,19 @@
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1rem;
+  position: relative;
+}
+
+.info-tooltip {
+  font-size: 0.85rem;
+  opacity: 0.6;
+  cursor: help;
+  transition: opacity 0.2s ease;
+  margin-left: auto;
+}
+
+.info-tooltip:hover {
+  opacity: 1;
 }
 
 .classification-icon {

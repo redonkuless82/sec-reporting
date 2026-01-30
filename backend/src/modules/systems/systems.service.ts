@@ -19,20 +19,19 @@ export class SystemsService {
   /**
    * Check if a system is active based on Intune presence OR other tool presence
    * A system is active if:
-   * 1. It has been seen in Intune within the last 15 days, OR
+   * 1. It has been seen in Intune today (itFound = true means lag days was 0 or -1), OR
    * 2. It has ANY health tool reporting (for environments without Intune)
+   *
+   * Note: itFound is now set correctly during import based on lag days:
+   * - itFound = true only when itLagDays is 0 or -1 (seen today)
+   * - itFound = false when itLagDays > 0 (not seen today)
    */
   private isSystemActive(snapshot: DailySnapshot, referenceDate: Date): boolean {
     // Check if any health tools are present (R7, AM, DF)
     const hasAnyHealthTool = snapshot.r7Found || snapshot.amFound || snapshot.dfFound;
     
-    // If Intune is found, use Intune-based logic
+    // If Intune is found (meaning it was seen today with lag 0 or -1), system is active
     if (snapshot.itFound) {
-      // Check if Intune lag days is within threshold
-      if (snapshot.itLagDays !== null && snapshot.itLagDays !== undefined) {
-        return snapshot.itLagDays <= this.INTUNE_INACTIVE_DAYS;
-      }
-      // If no lag data, assume active if found in Intune
       return true;
     }
     

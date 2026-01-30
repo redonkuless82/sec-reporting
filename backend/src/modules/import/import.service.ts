@@ -80,6 +80,26 @@ export class ImportService {
       await this.systemRepository.save(system);
     }
 
+    // Parse lag days for all tools to determine if they should be marked as "found"
+    // A tool is only "found" (reporting) if lag days is 0 or -1 (seen today)
+    // -1 indicates timezone issue but was seen today
+    // Any other value means it hasn't checked in today
+    const r7LagDays = this.parseNumber(record.r7LagDays);
+    const amLagDays = this.parseNumber(record.amLagDays);
+    const dfLagDays = this.parseNumber(record.dfLagDays);
+    const itLagDays = this.parseNumber(record.itLagDays);
+    
+    const r7FoundRaw = this.parseBoolean(record.r7Found);
+    const amFoundRaw = this.parseBoolean(record.amFound);
+    const dfFoundRaw = this.parseBoolean(record.dfFound);
+    const itFoundRaw = this.parseBoolean(record.itFound);
+    
+    // Calculate actual "found" status based on lag days
+    const r7FoundActual = r7FoundRaw && (r7LagDays === 0 || r7LagDays === -1) ? 1 : 0;
+    const amFoundActual = amFoundRaw && (amLagDays === 0 || amLagDays === -1) ? 1 : 0;
+    const dfFoundActual = dfFoundRaw && (dfLagDays === 0 || dfLagDays === -1) ? 1 : 0;
+    const itFoundActual = itFoundRaw && (itLagDays === 0 || itLagDays === -1) ? 1 : 0;
+
     // Create daily snapshot
     const snapshot = this.snapshotRepository.create({
       shortname,
@@ -102,11 +122,11 @@ export class ImportService {
       userEmail: record.userEmail || null,
       possibleFake: this.parseBoolean(record.possibleFake),
       
-      // Tool Reporting Status (Found)
-      r7Found: this.parseBoolean(record.r7Found),
-      amFound: this.parseBoolean(record.amFound),
-      dfFound: this.parseBoolean(record.dfFound),
-      itFound: this.parseBoolean(record.itFound),
+      // Tool Reporting Status (Found) - Use calculated values based on lag days
+      r7Found: r7FoundActual,
+      amFound: amFoundActual,
+      dfFound: dfFoundActual,
+      itFound: itFoundActual,
       vmFound: this.parseBoolean(record.vmFound),
       
       // Recency Indicators
@@ -116,18 +136,18 @@ export class ImportService {
       recentDFScan: this.parseBoolean(record.recentDFScan),
       recentITScan: this.parseBoolean(record.recentITScan),
       
-      // Lag Metrics
-      r7LagDays: this.parseNumber(record.r7LagDays),
-      amLagDays: this.parseNumber(record.amLagDays),
-      itLagDays: this.parseNumber(record.itLagDays),
-      dfLagDays: this.parseNumber(record.dfLagDays),
+      // Lag Metrics - Store the actual lag days values
+      r7LagDays: r7LagDays,
+      amLagDays: amLagDays,
+      itLagDays: itLagDays,
+      dfLagDays: dfLagDays,
       
       // Compliance - Calculate number of tools where system is NOT found
       numCriticals: this.calculateNonCompliantTools(
-        this.parseBoolean(record.r7Found),
-        this.parseBoolean(record.amFound),
-        this.parseBoolean(record.dfFound),
-        this.parseBoolean(record.itFound)
+        r7FoundActual,
+        amFoundActual,
+        dfFoundActual,
+        itFoundActual
       ),
       amLastUser: record.amLastUser || null,
       needsAMReboot: this.parseBoolean(record.needsAMReboot),

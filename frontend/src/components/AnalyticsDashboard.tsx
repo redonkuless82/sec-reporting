@@ -357,10 +357,16 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
             <div className="classification-header">
               <span className="classification-icon">📉</span>
               <span className="classification-title">Degrading</span>
+              <span
+                className="info-tooltip"
+                title="Systems that were previously healthy but have recently declined. Shows historical status and which tools stopped reporting."
+              >
+                ℹ️
+              </span>
             </div>
             <div className="classification-count">{overview.degrading}</div>
             <div className="classification-description">
-              Recently declined - investigate what changed
+              Recently declined - shows what was healthy and what stopped reporting
             </div>
           </div>
 

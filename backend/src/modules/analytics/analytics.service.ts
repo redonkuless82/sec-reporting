@@ -78,10 +78,11 @@ export class AnalyticsService {
 
     const latestDate = new Date(latestDateResult.maxDate);
 
-    // Get all unique systems from latest snapshot
+    // Get all unique systems from latest snapshot with their environment
     const systemsQueryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
+      .addSelect('snapshot.env', 'env')
       .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
 
@@ -91,6 +92,10 @@ export class AnalyticsService {
 
     const systems = await systemsQueryBuilder.getRawMany();
     const shortnames = systems.map(s => s.shortname);
+    
+    // Create a map of shortname to env for later use
+    const systemEnvMap = new Map<string, string | null>();
+    systems.forEach(s => systemEnvMap.set(s.shortname, s.env));
 
     if (shortnames.length === 0) {
       return {
@@ -132,7 +137,12 @@ export class AnalyticsService {
           endDate,
         );
         if (metric) {
-          metrics.push(metric);
+          // Add environment data from the map
+          const metricWithEnv = {
+            ...metric,
+            env: systemEnvMap.get(shortname) || null,
+          };
+          metrics.push(metricWithEnv);
         }
       }
     }

@@ -23,6 +23,13 @@ interface SystemWithDetails {
   }[];
 }
 
+interface Tooltip {
+  visible: boolean;
+  content: string;
+  x: number;
+  y: number;
+}
+
 export default function AnalyticsDetailPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -38,6 +45,8 @@ export default function AnalyticsDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [tooltip, setTooltip] = useState<Tooltip>({ visible: false, content: '', x: 0, y: 0 });
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const systemsPerPage = 100;
 
   useEffect(() => {
@@ -48,14 +57,26 @@ export default function AnalyticsDetailPage() {
 
   useEffect(() => {
     // Filter and paginate systems
-    const filtered = allSystems.filter(system =>
+    let filtered = allSystems.filter(system =>
       system.shortname.toLowerCase().includes(searchTerm.toLowerCase())
     );
+    
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(system => {
+        if (statusFilter === 'active') {
+          return system.currentHealthStatus !== 'INACTIVE';
+        } else if (statusFilter === 'inactive') {
+          return system.currentHealthStatus === 'INACTIVE';
+        }
+        return true;
+      });
+    }
     
     const startIndex = (currentPage - 1) * systemsPerPage;
     const endIndex = startIndex + systemsPerPage;
     setDisplayedSystems(filtered.slice(startIndex, endIndex));
-  }, [allSystems, currentPage, searchTerm]);
+  }, [allSystems, currentPage, searchTerm, statusFilter]);
 
   const loadSystems = async () => {
     if (!classification) return;
@@ -143,6 +164,108 @@ export default function AnalyticsDetailPage() {
     };
   };
 
+  const getHistoricalHealthStatus = (system: SystemWithDetails) => {
+    if (!system.healthHistory || system.healthHistory.length === 0) {
+      return { wasHealthy: false, daysNotReporting: 0, lastHealthyDate: null };
+    }
+
+    // Find the most recent healthy status
+    let wasHealthy = false;
+    let lastHealthyDate: Date | null = null;
+    let daysNotReporting = 0;
+
+    for (let i = system.healthHistory.length - 1; i >= 0; i--) {
+      const entry = system.healthHistory[i];
+      if (entry.healthStatus === 'FULLY_HEALTHY') {
+        wasHealthy = true;
+        lastHealthyDate = new Date(entry.date);
+        // Calculate days since last healthy
+        const today = new Date();
+        daysNotReporting = Math.floor((today.getTime() - lastHealthyDate.getTime()) / (1000 * 60 * 60 * 24));
+        break;
+      }
+    }
+
+    return { wasHealthy, daysNotReporting, lastHealthyDate };
+  };
+
+  const getDaysNotReporting = (system: SystemWithDetails) => {
+    if (!system.healthHistory || system.healthHistory.length === 0) {
+      return null;
+    }
+
+    const toolStatus = getToolStatus(system);
+    const missingTools = [];
+    if (!toolStatus.r7) missingTools.push('R7');
+    if (!toolStatus.am) missingTools.push('Automox');
+    if (!toolStatus.df) missingTools.push('Defender');
+
+    if (missingTools.length === 0) return null;
+
+    // Find when each tool stopped reporting
+    const toolLastSeen: { [key: string]: number } = {};
+    
+    for (let i = system.healthHistory.length - 1; i >= 0; i--) {
+      const entry = system.healthHistory[i];
+      const entryDate = new Date(entry.date);
+      const today = new Date();
+      const daysAgo = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (!toolStatus.r7 && entry.r7Found && !toolLastSeen['R7']) {
+        toolLastSeen['R7'] = daysAgo;
+      }
+      if (!toolStatus.am && entry.amFound && !toolLastSeen['Automox']) {
+        toolLastSeen['Automox'] = daysAgo;
+      }
+      if (!toolStatus.df && entry.dfFound && !toolLastSeen['Defender']) {
+        toolLastSeen['Defender'] = daysAgo;
+      }
+    }
+
+    return { missingTools, toolLastSeen };
+  };
+
+  const showTooltip = (content: string, event: React.MouseEvent) => {
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
+    setTooltip({
+      visible: true,
+      content,
+      x: rect.left + rect.width / 2,
+      y: rect.top - 10,
+    });
+  };
+
+  const hideTooltip = () => {
+    setTooltip({ visible: false, content: '', x: 0, y: 0 });
+  };
+
+  const getStatusTooltip = (status: string) => {
+    switch (status) {
+      case 'FULLY_HEALTHY':
+        return 'All 3 security tools (R7, Automox, Defender) are reporting. Health Score: 100%';
+      case 'PARTIALLY_HEALTHY':
+        return 'Only 1-2 security tools are reporting. Health Score: 33%-67%';
+      case 'UNHEALTHY':
+        return 'No security tools are reporting but system is active in Intune. Health Score: 0%';
+      case 'INACTIVE':
+        return 'System has not checked into Intune for 15+ days or is not in Intune. Excluded from health calculations.';
+      default:
+        return status;
+    }
+  };
+
+  const getStabilityScoreTooltip = (score: number) => {
+    if (score >= 90) {
+      return `Stability Score: ${score}/100 - Excellent. System has been consistently healthy with minimal fluctuations.`;
+    } else if (score >= 70) {
+      return `Stability Score: ${score}/100 - Good. System is mostly stable with some minor variations.`;
+    } else if (score >= 50) {
+      return `Stability Score: ${score}/100 - Fair. System shows moderate instability or recent changes.`;
+    } else {
+      return `Stability Score: ${score}/100 - Poor. System has significant instability or chronic issues.`;
+    }
+  };
+
   const getClassificationColor = () => {
     switch (classification) {
       case 'STABLE_HEALTHY':
@@ -169,7 +292,7 @@ export default function AnalyticsDetailPage() {
       case 'RECOVERING':
         return 'Systems that recently improved and are stabilizing';
       case 'DEGRADING':
-        return 'Systems that recently declined and are worsening';
+        return 'Systems that recently declined and are worsening - shows what was healthy and what stopped reporting';
       case 'STABLE_UNHEALTHY':
         return 'Systems that are consistently unhealthy - require immediate attention';
       default:
@@ -185,6 +308,22 @@ export default function AnalyticsDetailPage() {
 
   return (
     <div className="analytics-detail-page">
+      {/* Tooltip */}
+      {tooltip.visible && (
+        <div
+          className="custom-tooltip"
+          style={{
+            position: 'fixed',
+            left: `${tooltip.x}px`,
+            top: `${tooltip.y}px`,
+            transform: 'translate(-50%, -100%)',
+            zIndex: 10000,
+          }}
+        >
+          {tooltip.content}
+        </div>
+      )}
+
       <div className="detail-page-header" style={{ borderLeftColor: getClassificationColor() }}>
         <div className="header-content">
           <button className="back-button" onClick={() => navigate(-1)}>
@@ -237,6 +376,27 @@ export default function AnalyticsDetailPage() {
               </div>
             </div>
 
+            {/* Info Banner for Degrading Systems */}
+            {classification === 'DEGRADING' && (
+              <div className="info-banner degrading-info">
+                <div className="banner-icon">📉</div>
+                <div className="banner-content">
+                  <h4>Understanding Degrading Systems</h4>
+                  <p>
+                    These systems were previously healthy but have recently declined. The table below shows:
+                  </p>
+                  <ul>
+                    <li><strong>Historical Status:</strong> Whether the system was healthy in the past</li>
+                    <li><strong>What Changed:</strong> Which tools stopped reporting and when</li>
+                    <li><strong>Time Not Reporting:</strong> How many days each tool has been missing</li>
+                  </ul>
+                  <p className="banner-tip">
+                    💡 <strong>Tip:</strong> Hover over status badges and scores for detailed explanations
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Search and Pagination Controls */}
             <div className="controls-bar">
               <input
@@ -249,6 +409,22 @@ export default function AnalyticsDetailPage() {
                   setCurrentPage(1);
                 }}
               />
+              <div className="status-filter">
+                <label htmlFor="status-filter">Status:</label>
+                <select
+                  id="status-filter"
+                  className="status-filter-select"
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <option value="all">All Systems</option>
+                  <option value="active">Active Only</option>
+                  <option value="inactive">Inactive Only</option>
+                </select>
+              </div>
               <div className="pagination-info">
                 Showing {((currentPage - 1) * systemsPerPage) + 1}-{Math.min(currentPage * systemsPerPage, filteredSystems.length)} of {filteredSystems.length} systems
               </div>
@@ -264,8 +440,29 @@ export default function AnalyticsDetailPage() {
                     <tr>
                       <th>System</th>
                       <th>Environment</th>
-                      <th>Status</th>
-                      <th>Tool Status</th>
+                      <th>
+                        Current Status
+                        <span 
+                          className="info-icon"
+                          onMouseEnter={(e) => showTooltip('Current health status based on security tool reporting', e)}
+                          onMouseLeave={hideTooltip}
+                        >
+                          ℹ️
+                        </span>
+                      </th>
+                      <th>Tool Status (Current)</th>
+                      {classification === 'DEGRADING' && (
+                        <th>
+                          Historical Health
+                          <span 
+                            className="info-icon"
+                            onMouseEnter={(e) => showTooltip('Shows if system was healthy before and when it degraded', e)}
+                            onMouseLeave={hideTooltip}
+                          >
+                            ℹ️
+                          </span>
+                        </th>
+                      )}
                       <th>Recovery</th>
                       <th>Action Reason</th>
                     </tr>
@@ -273,6 +470,8 @@ export default function AnalyticsDetailPage() {
                   <tbody>
                     {displayedSystems.map((system, index) => {
                       const toolStatus = getToolStatus(system);
+                      const historicalStatus = getHistoricalHealthStatus(system);
+                      const notReportingInfo = getDaysNotReporting(system);
                       
                       return (
                         <tr key={index}>
@@ -296,34 +495,119 @@ export default function AnalyticsDetailPage() {
                           </td>
                           <td>
                             <div className="status-cell">
-                              <span className={`health-status status-${system.currentHealthStatus}`}>
+                              <span 
+                                className={`health-status status-${system.currentHealthStatus}`}
+                                onMouseEnter={(e) => showTooltip(getStatusTooltip(system.currentHealthStatus), e)}
+                                onMouseLeave={hideTooltip}
+                              >
                                 {system.currentHealthStatus}
                               </span>
-                              <div className="stability-score">
+                              <div 
+                                className="stability-score"
+                                onMouseEnter={(e) => showTooltip(getStabilityScoreTooltip(system.stabilityScore), e)}
+                                onMouseLeave={hideTooltip}
+                              >
                                 Score: {system.stabilityScore}/100
                               </div>
                             </div>
                           </td>
                           <td>
                             <div className="tool-status-grid">
-                              <div className={`tool-badge ${toolStatus.r7 ? 'found' : 'missing'}`}>
+                              <div 
+                                className={`tool-badge ${toolStatus.r7 ? 'found' : 'missing'}`}
+                                onMouseEnter={(e) => showTooltip(
+                                  toolStatus.r7 
+                                    ? 'Rapid7 is currently reporting' 
+                                    : 'Rapid7 is NOT reporting - vulnerability scanning may be offline',
+                                  e
+                                )}
+                                onMouseLeave={hideTooltip}
+                              >
                                 {toolStatus.r7 ? '✅' : '❌'} R7
                               </div>
-                              <div className={`tool-badge ${toolStatus.am ? 'found' : 'missing'}`}>
+                              <div 
+                                className={`tool-badge ${toolStatus.am ? 'found' : 'missing'}`}
+                                onMouseEnter={(e) => showTooltip(
+                                  toolStatus.am 
+                                    ? 'Automox is currently reporting' 
+                                    : 'Automox is NOT reporting - patch management may be offline',
+                                  e
+                                )}
+                                onMouseLeave={hideTooltip}
+                              >
                                 {toolStatus.am ? '✅' : '❌'} Automox
                               </div>
-                              <div className={`tool-badge ${toolStatus.df ? 'found' : 'missing'}`}>
+                              <div 
+                                className={`tool-badge ${toolStatus.df ? 'found' : 'missing'}`}
+                                onMouseEnter={(e) => showTooltip(
+                                  toolStatus.df 
+                                    ? 'Defender is currently reporting' 
+                                    : 'Defender is NOT reporting - endpoint protection may be offline',
+                                  e
+                                )}
+                                onMouseLeave={hideTooltip}
+                              >
                                 {toolStatus.df ? '✅' : '❌'} Defender
                               </div>
-                              <div className={`tool-badge ${toolStatus.it ? 'found' : 'missing'}`}>
+                              <div 
+                                className={`tool-badge ${toolStatus.it ? 'found' : 'missing'}`}
+                                onMouseEnter={(e) => showTooltip(
+                                  toolStatus.it 
+                                    ? 'Intune is currently reporting' 
+                                    : 'Intune is NOT reporting - system may be offline',
+                                  e
+                                )}
+                                onMouseLeave={hideTooltip}
+                              >
                                 {toolStatus.it ? '✅' : '❌'} Intune
                               </div>
                             </div>
                           </td>
+                          {classification === 'DEGRADING' && (
+                            <td>
+                              <div className="historical-status">
+                                {historicalStatus.wasHealthy ? (
+                                  <>
+                                    <div className="was-healthy">
+                                      ✅ Was Healthy
+                                    </div>
+                                    {historicalStatus.lastHealthyDate && (
+                                      <div className="last-healthy-date">
+                                        Last healthy: {historicalStatus.daysNotReporting} days ago
+                                      </div>
+                                    )}
+                                    {notReportingInfo && notReportingInfo.missingTools.length > 0 && (
+                                      <div className="missing-tools-info">
+                                        <strong>Stopped reporting:</strong>
+                                        {notReportingInfo.missingTools.map((tool, idx) => (
+                                          <div key={idx} className="tool-missing-detail">
+                                            • {tool}: {notReportingInfo.toolLastSeen[tool] || '?'} days ago
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="no-healthy-history">
+                                    No healthy history found
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          )}
                           <td>
                             {system.recoveryStatus && system.recoveryStatus !== 'NOT_APPLICABLE' ? (
                               <div className="recovery-cell">
-                                <span className={`recovery-badge status-${system.recoveryStatus.toLowerCase()}`}>
+                                <span 
+                                  className={`recovery-badge status-${system.recoveryStatus.toLowerCase()}`}
+                                  onMouseEnter={(e) => showTooltip(
+                                    system.recoveryStatus === 'NORMAL_RECOVERY' 
+                                      ? 'System is recovering within expected timeframe (< 2 days)' 
+                                      : 'System recovery is taking longer than expected (> 3 days) - may need intervention',
+                                    e
+                                  )}
+                                  onMouseLeave={hideTooltip}
+                                >
                                   {system.recoveryStatus.replace(/_/g, ' ')}
                                 </span>
                                 {system.recoveryDays !== null && (
