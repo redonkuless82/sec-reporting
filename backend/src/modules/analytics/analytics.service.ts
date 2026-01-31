@@ -81,10 +81,12 @@ export class AnalyticsService {
     // Get all unique systems from latest snapshot with their environment
     const systemsQueryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
-      .select('DISTINCT snapshot.shortname', 'shortname')
+      .select('snapshot.shortname', 'shortname')
       .addSelect('snapshot.env', 'env')
       .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .groupBy('snapshot.shortname')
+      .addGroupBy('snapshot.env');
 
     if (env) {
       systemsQueryBuilder.andWhere('snapshot.env = :env', { env });
