@@ -91,40 +91,20 @@ export default function AnalyticsDetailPage() {
         (system: any) => system.classification === classification
       );
       
-      // Fetch detailed insights for each system to get tool status
-      const systemsWithDetails = await Promise.all(
-        filteredSystems.map(async (system: any) => {
-          try {
-            const insights = await analyticsApi.getSystemInsights(system.shortname, days);
-            return {
-              shortname: system.shortname,
-              env: system.env,
-              stabilityScore: system.stabilityScore,
-              classification: system.classification,
-              currentHealthStatus: system.currentHealthStatus,
-              recoveryStatus: system.recoveryStatus,
-              recoveryDays: system.recoveryDays,
-              isActionable: system.isActionable,
-              actionReason: system.actionReason,
-              healthHistory: insights.healthHistory || [],
-            };
-          } catch (err) {
-            console.error(`Error loading insights for ${system.shortname}:`, err);
-            return {
-              shortname: system.shortname,
-              env: system.env,
-              stabilityScore: system.stabilityScore,
-              classification: system.classification,
-              currentHealthStatus: system.currentHealthStatus,
-              recoveryStatus: system.recoveryStatus,
-              recoveryDays: system.recoveryDays,
-              isActionable: system.isActionable,
-              actionReason: system.actionReason,
-              healthHistory: [],
-            };
-          }
-        })
-      );
+      // Don't fetch insights for all systems - just use the data we have
+      // Only fetch insights on-demand for degrading systems when needed
+      const systemsWithDetails = filteredSystems.map((system: any) => ({
+        shortname: system.shortname,
+        env: system.env,
+        stabilityScore: system.stabilityScore,
+        classification: system.classification,
+        currentHealthStatus: system.currentHealthStatus,
+        recoveryStatus: system.recoveryStatus,
+        recoveryDays: system.recoveryDays,
+        isActionable: system.isActionable,
+        actionReason: system.actionReason,
+        healthHistory: [], // Will be loaded on-demand if needed
+      }));
       
       setAllSystems(systemsWithDetails);
       setCurrentPage(1); // Reset to first page
@@ -300,9 +280,22 @@ export default function AnalyticsDetailPage() {
     }
   };
 
-  const filteredSystems = allSystems.filter(system =>
+  // Apply both search and status filters for pagination calculation
+  let filteredSystems = allSystems.filter(system =>
     system.shortname.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  
+  // Apply status filter
+  if (statusFilter !== 'all') {
+    filteredSystems = filteredSystems.filter(system => {
+      if (statusFilter === 'active') {
+        return system.currentHealthStatus !== 'INACTIVE';
+      } else if (statusFilter === 'inactive') {
+        return system.currentHealthStatus === 'INACTIVE';
+      }
+      return true;
+    });
+  }
 
   const totalPages = Math.ceil(filteredSystems.length / systemsPerPage);
 
