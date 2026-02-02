@@ -8,6 +8,11 @@ import { DailySnapshot } from '../../database/entities/daily-snapshot.entity';
 export class SystemsService {
   // Intune inactivity threshold in days
   private readonly INTUNE_INACTIVE_DAYS = 15;
+  
+  // Health grace period - tools are considered healthy if seen within this many days
+  // This provides "true state" health vs strict daily check-in tracking
+  // Covers weekends and provides stable metrics while still detecting real issues
+  private readonly HEALTH_GRACE_PERIOD_DAYS = 3;
 
   constructor(
     @InjectRepository(System)
@@ -50,9 +55,10 @@ export class SystemsService {
    * Calculate health status for a system
    * Health is based on: Rapid7, Automox, and Defender (VMware excluded)
    * System must be active (in Intune OR has health tools reporting) to be considered
+   * Uses grace period to provide "true state" health vs strict daily check-in
    *
    * Returns:
-   * - 'fully': All 3 tools (R7 + AM + DF) present
+   * - 'fully': All 3 tools (R7 + AM + DF) present (checked in within grace period)
    * - 'partially': 1-2 tools present
    * - 'unhealthy': 0 tools present (but system is active)
    * - 'inactive': Not active (no Intune and no health tools)
@@ -63,11 +69,14 @@ export class SystemsService {
       return 'inactive';
     }
 
-    // Count health tools (R7, AM, DF - VMware excluded)
+    // Count health tools using "true state" logic with grace period
+    // Tool counts if it either:
+    // 1. Checked in today (found = 1), OR
+    // 2. Checked in within grace period (lagDays <= HEALTH_GRACE_PERIOD_DAYS)
     const healthTools = [
-      snapshot.r7Found,
-      snapshot.amFound,
-      snapshot.dfFound,
+      snapshot.r7Found === 1 || (snapshot.r7LagDays !== null && snapshot.r7LagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
+      snapshot.amFound === 1 || (snapshot.amLagDays !== null && snapshot.amLagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
+      snapshot.dfFound === 1 || (snapshot.dfLagDays !== null && snapshot.dfLagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
     ].filter(Boolean).length;
 
     if (healthTools === 3) {
@@ -82,6 +91,7 @@ export class SystemsService {
   /**
    * Calculate fractional health score for a system
    * Returns a score between 0 and 1 based on tool coverage
+   * Uses grace period to provide "true state" health vs strict daily check-in
    * - 3/3 tools = 1.0 (100%)
    * - 2/3 tools = 0.667 (66.7%)
    * - 1/3 tools = 0.333 (33.3%)
@@ -94,11 +104,14 @@ export class SystemsService {
       return 0; // Inactive systems don't contribute to health score
     }
 
-    // Count health tools (R7, AM, DF - VMware excluded)
+    // Count health tools using "true state" logic with grace period
+    // Tool counts if it either:
+    // 1. Checked in today (found = 1), OR
+    // 2. Checked in within grace period (lagDays <= HEALTH_GRACE_PERIOD_DAYS)
     const healthTools = [
-      snapshot.r7Found,
-      snapshot.amFound,
-      snapshot.dfFound,
+      snapshot.r7Found === 1 || (snapshot.r7LagDays !== null && snapshot.r7LagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
+      snapshot.amFound === 1 || (snapshot.amLagDays !== null && snapshot.amLagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
+      snapshot.dfFound === 1 || (snapshot.dfLagDays !== null && snapshot.dfLagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
     ].filter(Boolean).length;
 
     // Return fractional score

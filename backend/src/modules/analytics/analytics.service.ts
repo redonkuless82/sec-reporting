@@ -444,13 +444,25 @@ export class AnalyticsService {
 
   /**
    * Calculate health status for a snapshot
+   * Uses grace period to provide "true state" health vs strict daily check-in
    */
   private calculateHealthStatus(snapshot: DailySnapshot): string {
+    // Health grace period - same as systems service
+    const HEALTH_GRACE_PERIOD_DAYS = 3;
+    
     if (!snapshot.itFound || (snapshot.itLagDays !== null && snapshot.itLagDays > 15)) {
       return 'inactive';
     }
 
-    const healthTools = [snapshot.r7Found, snapshot.amFound, snapshot.dfFound].filter(Boolean).length;
+    // Count health tools using "true state" logic with grace period
+    // Tool counts if it either:
+    // 1. Checked in today (found = 1), OR
+    // 2. Checked in within grace period (lagDays <= HEALTH_GRACE_PERIOD_DAYS)
+    const healthTools = [
+      snapshot.r7Found === 1 || (snapshot.r7LagDays !== null && snapshot.r7LagDays <= HEALTH_GRACE_PERIOD_DAYS),
+      snapshot.amFound === 1 || (snapshot.amLagDays !== null && snapshot.amLagDays <= HEALTH_GRACE_PERIOD_DAYS),
+      snapshot.dfFound === 1 || (snapshot.dfLagDays !== null && snapshot.dfLagDays <= HEALTH_GRACE_PERIOD_DAYS),
+    ].filter(Boolean).length;
 
     if (healthTools === 3) return 'fully';
     if (healthTools >= 1) return 'partially';

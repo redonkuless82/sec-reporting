@@ -29,21 +29,28 @@ export class StabilityScoringService {
 
   /**
    * Calculate system health status based on tool reporting
+   * Uses grace period to provide "true state" health vs strict daily check-in
    */
   private calculateHealthStatus(
     snapshot: DailySnapshot,
     referenceDate: Date,
   ): 'fully' | 'partially' | 'unhealthy' | 'inactive' {
+    // Health grace period - same as systems service
+    const HEALTH_GRACE_PERIOD_DAYS = 3;
+    
     // Check if system is active in Intune
     if (!snapshot.itFound || (snapshot.itLagDays !== null && snapshot.itLagDays > this.INTUNE_INACTIVE_DAYS)) {
       return 'inactive';
     }
 
-    // Count health tools (R7, AM, DF)
+    // Count health tools using "true state" logic with grace period
+    // Tool counts if it either:
+    // 1. Checked in today (found = 1), OR
+    // 2. Checked in within grace period (lagDays <= HEALTH_GRACE_PERIOD_DAYS)
     const healthTools = [
-      snapshot.r7Found,
-      snapshot.amFound,
-      snapshot.dfFound,
+      snapshot.r7Found === 1 || (snapshot.r7LagDays !== null && snapshot.r7LagDays <= HEALTH_GRACE_PERIOD_DAYS),
+      snapshot.amFound === 1 || (snapshot.amLagDays !== null && snapshot.amLagDays <= HEALTH_GRACE_PERIOD_DAYS),
+      snapshot.dfFound === 1 || (snapshot.dfLagDays !== null && snapshot.dfLagDays <= HEALTH_GRACE_PERIOD_DAYS),
     ].filter(Boolean).length;
 
     if (healthTools === 3) return 'fully';
