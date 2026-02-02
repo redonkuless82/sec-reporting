@@ -101,8 +101,8 @@ export class SystemsController {
   ) {
     const systems = await this.systemsService.getHealthySystemsForExport(env);
     
-    // Generate CSV
-    const csv = systems.map(s => s.shortname).join(',');
+    // Generate CSV with header and each system on a new line
+    const csv = ['Shortname', ...systems.map(s => s.shortname)].join('\n');
     
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="healthy-systems${env ? `-${env}` : ''}.csv"`);
@@ -116,8 +116,8 @@ export class SystemsController {
   ) {
     const systems = await this.systemsService.getUnhealthySystemsForExport(env);
     
-    // Generate CSV
-    const csv = systems.map(s => s.shortname).join(',');
+    // Generate CSV with header and each system on a new line
+    const csv = ['Shortname', ...systems.map(s => s.shortname)].join('\n');
     
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="unhealthy-systems${env ? `-${env}` : ''}.csv"`);
