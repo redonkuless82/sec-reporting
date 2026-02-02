@@ -165,6 +165,28 @@ export interface ToolTrend {
   trend: 'up' | 'down' | 'stable';
 }
 
+export interface FiveDayActiveMetrics {
+  totalSystems: number;
+  fullyHealthy: number;
+  partiallyHealthy: number;
+  unhealthy: number;
+  healthRate: number;
+  toolHealth: {
+    r7: number;
+    am: number;
+    df: number;
+    it: number;
+  };
+}
+
+export interface FiveDayHealthImprovement {
+  totalSystems: number;
+  systemsImproved: number;
+  systemsDegraded: number;
+  systemsStable: number;
+  averageImprovement: number;
+}
+
 export interface HealthTrendingSummary {
   totalSystemsNow: number;
   totalSystemsStart: number;
@@ -179,6 +201,10 @@ export interface HealthTrendingSummary {
     am: ToolTrend;
     df: ToolTrend;
     it: ToolTrend;
+  };
+  fiveDayActive: {
+    metrics: FiveDayActiveMetrics;
+    healthImprovement: FiveDayHealthImprovement;
   };
 }
 

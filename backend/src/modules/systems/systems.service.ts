@@ -17,31 +17,32 @@ export class SystemsService {
   ) {}
 
   /**
-   * Check if a system is active based on Intune presence OR other tool presence
+   * Check if a system is active based on Intune lag days
    * A system is active if:
-   * 1. It has been seen in Intune today (itFound = true means lag days was 0 or -1), OR
+   * 1. Intune lag days is <= 15 days (seen in Intune within the threshold), OR
    * 2. It has ANY health tool reporting (for environments without Intune)
    *
-   * Note: itFound is now set correctly during import based on lag days:
-   * - itFound = true only when itLagDays is 0 or -1 (seen today)
-   * - itFound = false when itLagDays > 0 (not seen today)
+   * This ensures we exclude systems that haven't shown up in Intune for more than 15 days
    */
   private isSystemActive(snapshot: DailySnapshot, referenceDate: Date): boolean {
     // Check if any health tools are present (R7, AM, DF)
     const hasAnyHealthTool = snapshot.r7Found || snapshot.amFound || snapshot.dfFound;
     
-    // If Intune is found (meaning it was seen today with lag 0 or -1), system is active
-    if (snapshot.itFound) {
+    // Check Intune lag - if lag is null or undefined, treat as not in Intune
+    const itLagDays = snapshot.itLagDays ?? null;
+    
+    // If Intune lag is within threshold (0-15 days), system is active
+    if (itLagDays !== null && itLagDays <= this.INTUNE_INACTIVE_DAYS) {
       return true;
     }
     
-    // If Intune is NOT found but health tools are present, consider active
+    // If Intune lag is > 15 days or not available, but health tools are present, consider active
     // This handles environments that don't use Intune
     if (hasAnyHealthTool) {
       return true;
     }
     
-    // No Intune and no health tools = inactive
+    // Intune lag > 15 days and no health tools = inactive
     return false;
   }
 
@@ -670,6 +671,21 @@ export class SystemsService {
       it: this.calculateToolTrend(trendData, 'it'),
     };
 
+    // Calculate metrics for systems online 5 days straight
+    const lastDateStr = dates[dates.length - 1];
+    const fiveDayActiveMetrics = await this.calculateConsecutiveActiveMetrics(
+      lastDateStr,
+      5,
+      env
+    );
+
+    // Calculate health improvement for 5-day active systems
+    const fiveDayHealthImprovement = await this.calculateConsecutiveActiveHealthImprovement(
+      new Date(lastDateStr),
+      5,
+      env
+    );
+
     const summary = {
       totalSystemsNow: lastDay.totalSystems,
       totalSystemsStart: firstDay.totalSystems,
@@ -680,12 +696,289 @@ export class SystemsService {
       dayOverDay,
       weekOverWeek,
       toolTrends,
+      fiveDayActive: {
+        metrics: fiveDayActiveMetrics,
+        healthImprovement: fiveDayHealthImprovement,
+      },
     };
 
     return {
       dateRange: { startDate, endDate, days },
       trendData,
       summary,
+    };
+  }
+
+  /**
+   * Check if a system has been consecutively active for the specified number of days
+   * Returns true if the system appears in snapshots for all consecutive days
+   */
+  private async isConsecutivelyActive(
+    shortname: string,
+    endDate: Date,
+    consecutiveDays: number,
+    env?: string
+  ): Promise<boolean> {
+    const dates = [];
+    for (let i = 0; i < consecutiveDays; i++) {
+      const date = new Date(endDate);
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0);
+      dates.push(date);
+    }
+
+    // Check if system has snapshots for all consecutive days
+    for (const date of dates) {
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      const queryBuilder = this.snapshotRepository
+        .createQueryBuilder('snapshot')
+        .where('snapshot.shortname = :shortname', { shortname })
+        .andWhere('snapshot.importDate >= :date', { date })
+        .andWhere('snapshot.importDate < :nextDay', { nextDay })
+        .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+
+      if (env) {
+        queryBuilder.andWhere('snapshot.env = :env', { env });
+      }
+
+      const snapshot = await queryBuilder.getOne();
+      
+      // If no snapshot for this day, or system is inactive, return false
+      if (!snapshot || !this.isSystemActive(snapshot, date)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Calculate metrics for systems that have been online consecutively for specified days
+   */
+  private async calculateConsecutiveActiveMetrics(
+    date: string,
+    consecutiveDays: number,
+    env?: string
+  ) {
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Get all systems for this date
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.importDate >= :targetDate', { targetDate })
+      .andWhere('snapshot.importDate < :nextDay', { nextDay })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+
+    const snapshots = await queryBuilder.getMany();
+
+    // Get unique systems
+    const latestSnapshotPerSystem = new Map<string, typeof snapshots[0]>();
+    snapshots.forEach((snapshot) => {
+      const existing = latestSnapshotPerSystem.get(snapshot.shortname);
+      if (!existing || snapshot.id > existing.id) {
+        latestSnapshotPerSystem.set(snapshot.shortname, snapshot);
+      }
+    });
+
+    // Filter to only systems that have been consecutively active
+    const consecutiveActiveSystems = [];
+    for (const [shortname, snapshot] of latestSnapshotPerSystem.entries()) {
+      const isConsecutive = await this.isConsecutivelyActive(
+        shortname,
+        targetDate,
+        consecutiveDays,
+        env
+      );
+      if (isConsecutive) {
+        consecutiveActiveSystems.push(snapshot);
+      }
+    }
+
+    // Calculate health metrics for these systems
+    let fullyHealthy = 0;
+    let partiallyHealthy = 0;
+    let unhealthy = 0;
+    let totalHealthPoints = 0;
+
+    const toolHealth = {
+      r7: 0,
+      am: 0,
+      df: 0,
+      it: 0,
+    };
+
+    consecutiveActiveSystems.forEach((snapshot) => {
+      const healthStatus = this.calculateSystemHealth(snapshot, targetDate);
+      const healthScore = this.calculateHealthScore(snapshot, targetDate);
+
+      if (healthStatus === 'fully') {
+        fullyHealthy++;
+      } else if (healthStatus === 'partially') {
+        partiallyHealthy++;
+      } else if (healthStatus === 'unhealthy') {
+        unhealthy++;
+      }
+
+      if (healthStatus !== 'inactive') {
+        totalHealthPoints += healthScore;
+        if (snapshot.r7Found) toolHealth.r7++;
+        if (snapshot.amFound) toolHealth.am++;
+        if (snapshot.dfFound) toolHealth.df++;
+        if (snapshot.itFound) toolHealth.it++;
+      }
+    });
+
+    const totalSystems = consecutiveActiveSystems.length;
+    const healthRate = totalSystems > 0 ? (totalHealthPoints / totalSystems) * 100 : 0;
+
+    return {
+      totalSystems,
+      fullyHealthy,
+      partiallyHealthy,
+      unhealthy,
+      healthRate: Math.round(healthRate * 100) / 100,
+      toolHealth,
+    };
+  }
+
+  /**
+   * Calculate health improvement for systems that have been consecutively active
+   */
+  private async calculateConsecutiveActiveHealthImprovement(
+    endDate: Date,
+    consecutiveDays: number,
+    env?: string
+  ) {
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - (consecutiveDays - 1));
+    startDate.setHours(0, 0, 0, 0);
+
+    const endDateCopy = new Date(endDate);
+    endDateCopy.setHours(0, 0, 0, 0);
+
+    // Get systems that have been consecutively active
+    const endNextDay = new Date(endDateCopy);
+    endNextDay.setDate(endNextDay.getDate() + 1);
+
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.importDate >= :endDate', { endDate: endDateCopy })
+      .andWhere('snapshot.importDate < :endNextDay', { endNextDay })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+
+    const endSnapshots = await queryBuilder.getMany();
+
+    const latestSnapshotPerSystem = new Map<string, typeof endSnapshots[0]>();
+    endSnapshots.forEach((snapshot) => {
+      const existing = latestSnapshotPerSystem.get(snapshot.shortname);
+      if (!existing || snapshot.id > existing.id) {
+        latestSnapshotPerSystem.set(snapshot.shortname, snapshot);
+      }
+    });
+
+    // Filter to consecutively active systems
+    const consecutiveActiveSystems = [];
+    for (const [shortname] of latestSnapshotPerSystem.entries()) {
+      const isConsecutive = await this.isConsecutivelyActive(
+        shortname,
+        endDateCopy,
+        consecutiveDays,
+        env
+      );
+      if (isConsecutive) {
+        consecutiveActiveSystems.push(shortname);
+      }
+    }
+
+    if (consecutiveActiveSystems.length === 0) {
+      return {
+        totalSystems: 0,
+        systemsImproved: 0,
+        systemsDegraded: 0,
+        systemsStable: 0,
+        averageImprovement: 0,
+      };
+    }
+
+    // Compare health scores from start to end
+    let systemsImproved = 0;
+    let systemsDegraded = 0;
+    let systemsStable = 0;
+    let totalImprovement = 0;
+
+    for (const shortname of consecutiveActiveSystems) {
+      // Get start snapshot
+      const startNextDay = new Date(startDate);
+      startNextDay.setDate(startNextDay.getDate() + 1);
+
+      const startQueryBuilder = this.snapshotRepository
+        .createQueryBuilder('snapshot')
+        .where('snapshot.shortname = :shortname', { shortname })
+        .andWhere('snapshot.importDate >= :startDate', { startDate })
+        .andWhere('snapshot.importDate < :startNextDay', { startNextDay })
+        .orderBy('snapshot.id', 'DESC');
+
+      if (env) {
+        startQueryBuilder.andWhere('snapshot.env = :env', { env });
+      }
+
+      const startSnapshot = await startQueryBuilder.getOne();
+
+      // Get end snapshot
+      const endQueryBuilder = this.snapshotRepository
+        .createQueryBuilder('snapshot')
+        .where('snapshot.shortname = :shortname', { shortname })
+        .andWhere('snapshot.importDate >= :endDate', { endDate: endDateCopy })
+        .andWhere('snapshot.importDate < :endNextDay', { endNextDay })
+        .orderBy('snapshot.id', 'DESC');
+
+      if (env) {
+        endQueryBuilder.andWhere('snapshot.env = :env', { env });
+      }
+
+      const endSnapshot = await endQueryBuilder.getOne();
+
+      if (startSnapshot && endSnapshot) {
+        const startScore = this.calculateHealthScore(startSnapshot, startDate);
+        const endScore = this.calculateHealthScore(endSnapshot, endDateCopy);
+        const improvement = endScore - startScore;
+
+        totalImprovement += improvement;
+
+        if (improvement > 0) {
+          systemsImproved++;
+        } else if (improvement < 0) {
+          systemsDegraded++;
+        } else {
+          systemsStable++;
+        }
+      }
+    }
+
+    const averageImprovement = consecutiveActiveSystems.length > 0
+      ? totalImprovement / consecutiveActiveSystems.length
+      : 0;
+
+    return {
+      totalSystems: consecutiveActiveSystems.length,
+      systemsImproved,
+      systemsDegraded,
+      systemsStable,
+      averageImprovement: Math.round(averageImprovement * 10000) / 10000,
     };
   }
 
@@ -724,6 +1017,120 @@ export class SystemsService {
     else if (change < 0) trend = 'down';
 
     return { current, change, changePercent, trend };
+  }
+
+  /**
+   * Get healthy systems (fully or partially healthy) for CSV export
+   */
+  async getHealthySystemsForExport(env?: string) {
+    // Get the latest import date
+    const latestImportDate = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('MAX(snapshot.importDate)', 'maxDate')
+      .getRawOne();
+
+    if (!latestImportDate?.maxDate) {
+      return [];
+    }
+
+    const today = new Date(latestImportDate.maxDate);
+    today.setHours(0, 0, 0, 0);
+
+    const nextDay = new Date(today);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Get all snapshots for the latest date
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.importDate >= :today', { today })
+      .andWhere('snapshot.importDate < :nextDay', { nextDay })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+
+    const snapshots = await queryBuilder
+      .orderBy('snapshot.shortname', 'ASC')
+      .getMany();
+
+    // Get only the latest snapshot per system
+    const latestSnapshotPerSystem = new Map<string, typeof snapshots[0]>();
+    snapshots.forEach((snapshot) => {
+      const existing = latestSnapshotPerSystem.get(snapshot.shortname);
+      if (!existing || snapshot.id > existing.id) {
+        latestSnapshotPerSystem.set(snapshot.shortname, snapshot);
+      }
+    });
+
+    // Filter to healthy systems (fully or partially healthy)
+    const healthySystems = Array.from(latestSnapshotPerSystem.values())
+      .filter((snapshot) => {
+        const healthStatus = this.calculateSystemHealth(snapshot, today);
+        return healthStatus === 'fully' || healthStatus === 'partially';
+      })
+      .map((snapshot) => ({
+        shortname: snapshot.shortname,
+      }));
+
+    return healthySystems;
+  }
+
+  /**
+   * Get unhealthy systems (unhealthy or inactive) for CSV export
+   */
+  async getUnhealthySystemsForExport(env?: string) {
+    // Get the latest import date
+    const latestImportDate = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('MAX(snapshot.importDate)', 'maxDate')
+      .getRawOne();
+
+    if (!latestImportDate?.maxDate) {
+      return [];
+    }
+
+    const today = new Date(latestImportDate.maxDate);
+    today.setHours(0, 0, 0, 0);
+
+    const nextDay = new Date(today);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Get all snapshots for the latest date
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.importDate >= :today', { today })
+      .andWhere('snapshot.importDate < :nextDay', { nextDay })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+
+    const snapshots = await queryBuilder
+      .orderBy('snapshot.shortname', 'ASC')
+      .getMany();
+
+    // Get only the latest snapshot per system
+    const latestSnapshotPerSystem = new Map<string, typeof snapshots[0]>();
+    snapshots.forEach((snapshot) => {
+      const existing = latestSnapshotPerSystem.get(snapshot.shortname);
+      if (!existing || snapshot.id > existing.id) {
+        latestSnapshotPerSystem.set(snapshot.shortname, snapshot);
+      }
+    });
+
+    // Filter to unhealthy systems (unhealthy or inactive)
+    const unhealthySystems = Array.from(latestSnapshotPerSystem.values())
+      .filter((snapshot) => {
+        const healthStatus = this.calculateSystemHealth(snapshot, today);
+        return healthStatus === 'unhealthy' || healthStatus === 'inactive';
+      })
+      .map((snapshot) => ({
+        shortname: snapshot.shortname,
+      }));
+
+    return unhealthySystems;
   }
 
   async getSystemsByHealthCategory(date: string, category: 'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new', env?: string) {

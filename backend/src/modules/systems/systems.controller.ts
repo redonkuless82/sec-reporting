@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { SystemsService } from './systems.service';
 
 @Controller('systems')
@@ -91,5 +92,35 @@ export class SystemsController {
     const yearNum = year ? parseInt(year, 10) : undefined;
     const monthNum = month ? parseInt(month, 10) : undefined;
     return this.systemsService.getCalendarData(shortname, yearNum, monthNum);
+  }
+
+  @Get('export/healthy-systems')
+  async exportHealthySystems(
+    @Query('env') env?: string,
+    @Res() res?: Response,
+  ) {
+    const systems = await this.systemsService.getHealthySystemsForExport(env);
+    
+    // Generate CSV
+    const csv = systems.map(s => s.shortname).join(',');
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="healthy-systems${env ? `-${env}` : ''}.csv"`);
+    res.send(csv);
+  }
+
+  @Get('export/unhealthy-systems')
+  async exportUnhealthySystems(
+    @Query('env') env?: string,
+    @Res() res?: Response,
+  ) {
+    const systems = await this.systemsService.getUnhealthySystemsForExport(env);
+    
+    // Generate CSV
+    const csv = systems.map(s => s.shortname).join(',');
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="unhealthy-systems${env ? `-${env}` : ''}.csv"`);
+    res.send(csv);
   }
 }

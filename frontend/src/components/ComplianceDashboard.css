@@ -1,3 +1,48 @@
+/* Export buttons */
+.export-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-right: 1rem;
+}
+
+.export-button {
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  background: var(--card-bg, #ffffff);
+  color: var(--text-primary, #333);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.export-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.export-button.healthy {
+  border-color: #4caf50;
+  color: #4caf50;
+}
+
+.export-button.healthy:hover {
+  background: #4caf50;
+  color: white;
+}
+
+.export-button.unhealthy {
+  border-color: #f44336;
+  color: #f44336;
+}
+
+.export-button.unhealthy:hover {
+  background: #f44336;
+  color: white;
+}
+
 /* Comparison indicators */
 .card-comparison {
   font-size: 0.85rem;
@@ -809,5 +854,181 @@
 
   .period-selector {
     background: var(--bg-secondary-dark, #2a2a2a);
+  }
+}
+
+/* 5-Day Consecutive Active Systems Section */
+.five-day-active-section {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: var(--card-bg, #ffffff);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid #ff9800;
+}
+
+.five-day-active-section h3 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-primary, #333);
+}
+
+.five-day-active-section .section-description {
+  margin: 0 0 1.5rem 0;
+  color: var(--text-secondary, #666);
+  font-size: 0.95rem;
+}
+
+.five-day-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.five-day-tool-health {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-tertiary, #f5f5f5);
+  border-radius: 6px;
+}
+
+.five-day-tool-health h4 {
+  margin: 0 0 1rem 0;
+  color: var(--text-primary, #333);
+  font-size: 1rem;
+}
+
+.five-day-tool-health .tool-compliance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.five-day-tool-health .tool-percentage {
+  margin-left: 0.5rem;
+  color: var(--text-secondary, #666);
+  font-size: 0.9rem;
+}
+
+.five-day-improvement {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-tertiary, #f5f5f5);
+  border-radius: 6px;
+}
+
+.five-day-improvement h4 {
+  margin: 0 0 1rem 0;
+  color: var(--text-primary, #333);
+  font-size: 1rem;
+}
+
+.improvement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.improvement-card {
+  padding: 1.25rem;
+  background: var(--card-bg, #ffffff);
+  border-radius: 8px;
+  border: 2px solid var(--border-color, #e0e0e0);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.improvement-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.improvement-card.positive {
+  border-color: #4caf50;
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(76, 175, 80, 0.02) 100%);
+}
+
+.improvement-card.negative {
+  border-color: #f44336;
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.05) 0%, rgba(244, 67, 54, 0.02) 100%);
+}
+
+.improvement-card.neutral {
+  border-color: #9e9e9e;
+  background: linear-gradient(135deg, rgba(158, 158, 158, 0.05) 0%, rgba(158, 158, 158, 0.02) 100%);
+}
+
+.improvement-card.highlight {
+  border-color: #2196f3;
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.05) 0%, rgba(33, 150, 243, 0.02) 100%);
+}
+
+.improvement-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.improvement-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.improvement-label {
+  font-size: 0.9rem;
+  color: var(--text-secondary, #666);
+  font-weight: 500;
+}
+
+.improvement-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary, #333);
+}
+
+.improvement-value.positive {
+  color: #4caf50;
+}
+
+.improvement-value.negative {
+  color: #f44336;
+}
+
+.improvement-description {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #666);
+  margin-top: 0.25rem;
+}
+
+/* Dark mode support for 5-day section */
+@media (prefers-color-scheme: dark) {
+  .five-day-active-section {
+    background: var(--bg-secondary-dark, #1e1e1e);
+    border-left-color: #ff9800;
+  }
+
+  .five-day-tool-health,
+  .five-day-improvement {
+    background: var(--bg-tertiary-dark, #2a2a2a);
+  }
+
+  .improvement-card {
+    background: var(--bg-secondary-dark, #1e1e1e);
+    border-color: var(--border-color-dark, #404040);
+  }
+
+  .improvement-card.positive {
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+  }
+
+  .improvement-card.negative {
+    background: linear-gradient(135deg, rgba(244, 67, 54, 0.1) 0%, rgba(244, 67, 54, 0.05) 100%);
+  }
+
+  .improvement-card.neutral {
+    background: linear-gradient(135deg, rgba(158, 158, 158, 0.1) 0%, rgba(158, 158, 158, 0.05) 100%);
+  }
+
+  .improvement-card.highlight {
+    background: linear-gradient(135deg, rgba(33, 150, 243, 0.1) 0%, rgba(33, 150, 243, 0.05) 100%);
   }
 }

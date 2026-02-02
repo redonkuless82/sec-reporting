@@ -70,6 +70,18 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
     setModalOpen(false);
   };
 
+  const handleExportHealthy = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || '/api';
+    const url = `${apiUrl}/systems/export/healthy-systems${selectedEnvironment ? `?env=${selectedEnvironment}` : ''}`;
+    window.open(url, '_blank');
+  };
+
+  const handleExportUnhealthy = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || '/api';
+    const url = `${apiUrl}/systems/export/unhealthy-systems${selectedEnvironment ? `?env=${selectedEnvironment}` : ''}`;
+    window.open(url, '_blank');
+  };
+
   if (loading) {
     return (
       <div className="compliance-dashboard loading">
@@ -168,6 +180,22 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
           </p>
         </div>
         <div className="header-controls">
+          <div className="export-buttons">
+            <button
+              className="export-button healthy"
+              onClick={handleExportHealthy}
+              title="Export healthy systems as CSV"
+            >
+              📥 Export Healthy
+            </button>
+            <button
+              className="export-button unhealthy"
+              onClick={handleExportUnhealthy}
+              title="Export unhealthy systems as CSV"
+            >
+              📥 Export Unhealthy
+            </button>
+          </div>
           <div className="period-selector">
             <button
               className={selectedPeriod === 7 ? 'active' : ''}
@@ -731,6 +759,161 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
               <div className="tool-trend-label">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 5-Day Consecutive Active Systems Section */}
+      {summary.fiveDayActive && summary.fiveDayActive.metrics.totalSystems > 0 && (
+        <div className="five-day-active-section">
+          <h3>🔥 5-Day Consecutive Active Systems</h3>
+          <p className="section-description">
+            Systems that have been continuously active (in Intune within 15 days) for the last 5 days straight
+          </p>
+          
+          <div className="five-day-summary-cards">
+            <div className="summary-card">
+              <div className="card-icon">📊</div>
+              <div className="card-content">
+                <div className="card-label">Total 5-Day Active</div>
+                <div className="card-value">{summary.fiveDayActive.metrics.totalSystems}</div>
+                <div className="card-description">Consistently online systems</div>
+              </div>
+            </div>
+
+            <div className="summary-card">
+              <div className="card-icon">💚</div>
+              <div className="card-content">
+                <div className="card-label">Health Rate</div>
+                <div className="card-value">{summary.fiveDayActive.metrics.healthRate.toFixed(1)}%</div>
+                <div className="card-description">For 5-day active systems</div>
+              </div>
+            </div>
+
+            <div className="summary-card">
+              <div className="card-icon">✅</div>
+              <div className="card-content">
+                <div className="card-label">Fully Healthy</div>
+                <div className="card-value">{summary.fiveDayActive.metrics.fullyHealthy}</div>
+                <div className="card-description">All 3 tools reporting</div>
+              </div>
+            </div>
+
+            <div className="summary-card">
+              <div className="card-icon">⚠️</div>
+              <div className="card-content">
+                <div className="card-label">Partially Healthy</div>
+                <div className="card-value">{summary.fiveDayActive.metrics.partiallyHealthy}</div>
+                <div className="card-description">1-2 tools reporting</div>
+              </div>
+            </div>
+
+            <div className="summary-card">
+              <div className="card-icon">❌</div>
+              <div className="card-content">
+                <div className="card-label">Unhealthy</div>
+                <div className="card-value">{summary.fiveDayActive.metrics.unhealthy}</div>
+                <div className="card-description">No tools reporting</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tool Health for 5-Day Active Systems */}
+          <div className="five-day-tool-health">
+            <h4>Tool Coverage for 5-Day Active Systems</h4>
+            <div className="tool-compliance-grid">
+              <div className="tool-compliance-item">
+                <span className="tool-name">Rapid7:</span>
+                <span className="tool-count">{summary.fiveDayActive.metrics.toolHealth.r7} systems</span>
+                <span className="tool-percentage">
+                  ({summary.fiveDayActive.metrics.totalSystems > 0
+                    ? ((summary.fiveDayActive.metrics.toolHealth.r7 / summary.fiveDayActive.metrics.totalSystems) * 100).toFixed(1)
+                    : 0}%)
+                </span>
+              </div>
+              <div className="tool-compliance-item">
+                <span className="tool-name">Automox:</span>
+                <span className="tool-count">{summary.fiveDayActive.metrics.toolHealth.am} systems</span>
+                <span className="tool-percentage">
+                  ({summary.fiveDayActive.metrics.totalSystems > 0
+                    ? ((summary.fiveDayActive.metrics.toolHealth.am / summary.fiveDayActive.metrics.totalSystems) * 100).toFixed(1)
+                    : 0}%)
+                </span>
+              </div>
+              <div className="tool-compliance-item">
+                <span className="tool-name">Defender:</span>
+                <span className="tool-count">{summary.fiveDayActive.metrics.toolHealth.df} systems</span>
+                <span className="tool-percentage">
+                  ({summary.fiveDayActive.metrics.totalSystems > 0
+                    ? ((summary.fiveDayActive.metrics.toolHealth.df / summary.fiveDayActive.metrics.totalSystems) * 100).toFixed(1)
+                    : 0}%)
+                </span>
+              </div>
+              <div className="tool-compliance-item">
+                <span className="tool-name">Intune:</span>
+                <span className="tool-count">{summary.fiveDayActive.metrics.toolHealth.it} systems</span>
+                <span className="tool-percentage">
+                  ({summary.fiveDayActive.metrics.totalSystems > 0
+                    ? ((summary.fiveDayActive.metrics.toolHealth.it / summary.fiveDayActive.metrics.totalSystems) * 100).toFixed(1)
+                    : 0}%)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Health Improvement Trends for 5-Day Active Systems */}
+          {summary.fiveDayActive.healthImprovement && (
+            <div className="five-day-improvement">
+              <h4>Health Improvement Trends (5-Day Active Systems)</h4>
+              <div className="improvement-grid">
+                <div className="improvement-card positive">
+                  <div className="improvement-icon">📈</div>
+                  <div className="improvement-content">
+                    <div className="improvement-label">Systems Improved</div>
+                    <div className="improvement-value">{summary.fiveDayActive.healthImprovement.systemsImproved}</div>
+                    <div className="improvement-description">
+                      Gained tooling health over 5 days
+                    </div>
+                  </div>
+                </div>
+
+                <div className="improvement-card negative">
+                  <div className="improvement-icon">📉</div>
+                  <div className="improvement-content">
+                    <div className="improvement-label">Systems Degraded</div>
+                    <div className="improvement-value">{summary.fiveDayActive.healthImprovement.systemsDegraded}</div>
+                    <div className="improvement-description">
+                      Lost tooling health over 5 days
+                    </div>
+                  </div>
+                </div>
+
+                <div className="improvement-card neutral">
+                  <div className="improvement-icon">➡️</div>
+                  <div className="improvement-content">
+                    <div className="improvement-label">Systems Stable</div>
+                    <div className="improvement-value">{summary.fiveDayActive.healthImprovement.systemsStable}</div>
+                    <div className="improvement-description">
+                      No change in tooling health
+                    </div>
+                  </div>
+                </div>
+
+                <div className="improvement-card highlight">
+                  <div className="improvement-icon">⭐</div>
+                  <div className="improvement-content">
+                    <div className="improvement-label">Average Improvement</div>
+                    <div className={`improvement-value ${summary.fiveDayActive.healthImprovement.averageImprovement >= 0 ? 'positive' : 'negative'}`}>
+                      {summary.fiveDayActive.healthImprovement.averageImprovement >= 0 ? '+' : ''}
+                      {(summary.fiveDayActive.healthImprovement.averageImprovement * 100).toFixed(2)}%
+                    </div>
+                    <div className="improvement-description">
+                      Average health score change
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

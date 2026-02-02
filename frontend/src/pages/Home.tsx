@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { systemsApi } from '../services/api';
 import { useEnvironment } from '../contexts/EnvironmentContext';
 import NavigationBar from '../components/NavigationBar';
@@ -10,6 +11,7 @@ import AnalyticsDashboard from '../components/AnalyticsDashboard';
 import type { System, MissingSystem } from '../types';
 
 export default function Home() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSystem, setSelectedSystem] = useState<System | null>(null);
   const [systems, setSystems] = useState<System[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,6 +32,16 @@ export default function Home() {
   // Use global environment context
   const { selectedEnvironment } = useEnvironment();
 
+  // Handle system selection from URL parameter
+  useEffect(() => {
+    const systemParam = searchParams.get('system');
+    if (systemParam) {
+      loadSystemByShortname(systemParam);
+      // Clear the parameter after loading
+      setSearchParams({});
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     loadSystems();
   }, [currentPage, searchTerm, selectedEnvironment]);
@@ -39,6 +51,16 @@ export default function Home() {
     loadReappearedSystems();
     loadMissingSystems();
   }, [selectedEnvironment]);
+
+  const loadSystemByShortname = async (shortname: string) => {
+    try {
+      const system = await systemsApi.getSystem(shortname);
+      setSelectedSystem(system);
+      setCurrentView('systems');
+    } catch (error) {
+      console.error('Error loading system:', error);
+    }
+  };
 
   const loadSystems = async () => {
     setLoading(true);

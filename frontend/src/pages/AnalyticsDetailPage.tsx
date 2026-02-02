@@ -55,6 +55,9 @@ export default function AnalyticsDetailPage() {
     }
   }, [classification, days, environment]);
 
+  // Memoize filtered systems to avoid recalculation
+  const [filteredCount, setFilteredCount] = useState(0);
+
   useEffect(() => {
     // Filter and paginate systems
     let filtered = allSystems.filter(system =>
@@ -72,6 +75,9 @@ export default function AnalyticsDetailPage() {
         return true;
       });
     }
+    
+    // Update filtered count for pagination
+    setFilteredCount(filtered.length);
     
     const startIndex = (currentPage - 1) * systemsPerPage;
     const endIndex = startIndex + systemsPerPage;
@@ -117,14 +123,9 @@ export default function AnalyticsDetailPage() {
     }
   };
 
-  const handleSystemClick = async (shortname: string) => {
-    try {
-      const system = await systemsApi.getSystem(shortname);
-      // Navigate to system details (you'll need to implement this route)
-      console.log('Navigate to system:', system);
-    } catch (error) {
-      console.error('Error loading system:', error);
-    }
+  const handleSystemClick = (shortname: string) => {
+    // Navigate to home page with system parameter
+    navigate(`/?system=${encodeURIComponent(shortname)}`);
   };
 
   const getToolStatus = (system: SystemWithDetails) => {
@@ -280,24 +281,7 @@ export default function AnalyticsDetailPage() {
     }
   };
 
-  // Apply both search and status filters for pagination calculation
-  let filteredSystems = allSystems.filter(system =>
-    system.shortname.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-  
-  // Apply status filter
-  if (statusFilter !== 'all') {
-    filteredSystems = filteredSystems.filter(system => {
-      if (statusFilter === 'active') {
-        return system.currentHealthStatus !== 'INACTIVE';
-      } else if (statusFilter === 'inactive') {
-        return system.currentHealthStatus === 'INACTIVE';
-      }
-      return true;
-    });
-  }
-
-  const totalPages = Math.ceil(filteredSystems.length / systemsPerPage);
+  const totalPages = Math.ceil(filteredCount / systemsPerPage);
 
   return (
     <div className="analytics-detail-page">
@@ -419,12 +403,12 @@ export default function AnalyticsDetailPage() {
                 </select>
               </div>
               <div className="pagination-info">
-                Showing {((currentPage - 1) * systemsPerPage) + 1}-{Math.min(currentPage * systemsPerPage, filteredSystems.length)} of {filteredSystems.length} systems
+                Showing {((currentPage - 1) * systemsPerPage) + 1}-{Math.min(currentPage * systemsPerPage, filteredCount)} of {filteredCount} systems
               </div>
             </div>
 
             {/* Systems Table */}
-            {filteredSystems.length === 0 ? (
+            {filteredCount === 0 ? (
               <div className="no-systems-found">No systems match your search</div>
             ) : (
               <div className="systems-table-container">
