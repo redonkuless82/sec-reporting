@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { SystemsResponse, CalendarResponse, StatsResponse, System, NewSystemsResponse, MissingSystemsResponse, HealthTrendingResponse, HealthCategoryResponse } from '../types';
+import type { SystemsResponse, CalendarResponse, StatsResponse, System, NewSystemsResponse, MissingSystemsResponse, HealthTrendingResponse, HealthCategoryResponse, FiveDayActiveDrillDownResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -113,6 +113,18 @@ export const systemsApi = {
     }
     
     const response = await api.get<HealthCategoryResponse>(`/systems/health-category?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get 5-day active systems drill-down
+  getFiveDayActiveDrillDown: async (date: string, env?: string): Promise<FiveDayActiveDrillDownResponse> => {
+    const params = new URLSearchParams();
+    params.append('date', date);
+    if (env) {
+      params.append('env', env);
+    }
+    
+    const response = await api.get<FiveDayActiveDrillDownResponse>(`/systems/five-day-active-drilldown?${params.toString()}`);
     return response.data;
   },
 

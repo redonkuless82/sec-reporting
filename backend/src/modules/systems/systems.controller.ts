@@ -67,6 +67,17 @@ export class SystemsController {
     return this.systemsService.getSystemsByHealthCategory(date, category, env);
   }
 
+  @Get('five-day-active-drilldown')
+  async getFiveDayActiveDrillDown(
+    @Query('date') date: string,
+    @Query('env') env?: string,
+  ) {
+    if (!date) {
+      throw new Error('Date parameter is required');
+    }
+    return this.systemsService.getFiveDayActiveDrillDown(date, env);
+  }
+
   @Get(':shortname')
   async findOne(@Param('shortname') shortname: string) {
     return this.systemsService.findOne(shortname);

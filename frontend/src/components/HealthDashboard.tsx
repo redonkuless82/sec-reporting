@@ -3,6 +3,7 @@ import { systemsApi } from '../services/api';
 import { useEnvironment } from '../contexts/EnvironmentContext';
 import type { HealthTrendingResponse, HealthTrendDataPoint } from '../types';
 import HealthDrillDownModal from './HealthDrillDownModal';
+import FiveDayActiveDrillDownModal from './FiveDayActiveDrillDownModal';
 import './ComplianceDashboard.css';
 
 interface HealthDashboardProps {
@@ -20,6 +21,7 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
   const [modalCategory, setModalCategory] = useState<'fully' | 'partially' | 'unhealthy' | 'inactive' | 'new'>('fully');
   const [modalCategoryLabel, setModalCategoryLabel] = useState('');
   const [modalDate, setModalDate] = useState('');
+  const [fiveDayModalOpen, setFiveDayModalOpen] = useState(false);
 
   // Use global environment context
   const { selectedEnvironment } = useEnvironment();
@@ -68,6 +70,14 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
 
   const handleCloseModal = () => {
     setModalOpen(false);
+  };
+
+  const handleFiveDayDrillDown = () => {
+    setFiveDayModalOpen(true);
+  };
+
+  const handleCloseFiveDayModal = () => {
+    setFiveDayModalOpen(false);
   };
 
   const handleExportHealthy = () => {
@@ -771,7 +781,12 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
           </p>
           
           <div className="five-day-summary-cards">
-            <div className="summary-card">
+            <div
+              className="summary-card clickable"
+              onClick={handleFiveDayDrillDown}
+              style={{ cursor: 'pointer' }}
+              title="Click to see detailed drill-down"
+            >
               <div className="card-icon">📊</div>
               <div className="card-content">
                 <div className="card-label">Total 5-Day Active</div>
@@ -780,7 +795,12 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
               </div>
             </div>
 
-            <div className="summary-card">
+            <div
+              className="summary-card clickable"
+              onClick={handleFiveDayDrillDown}
+              style={{ cursor: 'pointer' }}
+              title="Click to see detailed drill-down"
+            >
               <div className="card-icon">💚</div>
               <div className="card-content">
                 <div className="card-label">Health Rate</div>
@@ -789,7 +809,12 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
               </div>
             </div>
 
-            <div className="summary-card">
+            <div
+              className="summary-card clickable"
+              onClick={handleFiveDayDrillDown}
+              style={{ cursor: 'pointer' }}
+              title="Click to see detailed drill-down"
+            >
               <div className="card-icon">✅</div>
               <div className="card-content">
                 <div className="card-label">Fully Healthy</div>
@@ -798,7 +823,12 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
               </div>
             </div>
 
-            <div className="summary-card">
+            <div
+              className="summary-card clickable"
+              onClick={handleFiveDayDrillDown}
+              style={{ cursor: 'pointer' }}
+              title="Click to see detailed drill-down"
+            >
               <div className="card-icon">⚠️</div>
               <div className="card-content">
                 <div className="card-label">Partially Healthy</div>
@@ -807,7 +837,12 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
               </div>
             </div>
 
-            <div className="summary-card">
+            <div
+              className="summary-card clickable"
+              onClick={handleFiveDayDrillDown}
+              style={{ cursor: 'pointer' }}
+              title="Click to see detailed drill-down"
+            >
               <div className="card-icon">❌</div>
               <div className="card-content">
                 <div className="card-label">Unhealthy</div>
@@ -1008,6 +1043,14 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
         date={modalDate}
         category={modalCategory}
         categoryLabel={modalCategoryLabel}
+        environment={selectedEnvironment || undefined}
+      />
+
+      {/* 5-Day Active Drill-Down Modal */}
+      <FiveDayActiveDrillDownModal
+        isOpen={fiveDayModalOpen}
+        onClose={handleCloseFiveDayModal}
+        date={trendData.length > 0 ? trendData[trendData.length - 1].date : ''}
         environment={selectedEnvironment || undefined}
       />
     </div>

@@ -240,3 +240,60 @@ export interface HealthCategoryResponse {
   count: number;
   systems: SystemHealthDetail[];
 }
+
+export interface DailyHealthData {
+  date: string;
+  healthStatus: string;
+  healthScore: number;
+  toolStatus: {
+    r7: boolean;
+    am: boolean;
+    df: boolean;
+    it: boolean;
+  };
+}
+
+export interface FiveDayActiveSystemDetail {
+  shortname: string;
+  fullname: string | null;
+  env: string | null;
+  currentHealthStatus: string;
+  currentHealthScore: number;
+  healthChange: 'improved' | 'degraded' | 'stable';
+  healthScoreChange: number;
+  currentToolStatus: {
+    r7: boolean;
+    am: boolean;
+    df: boolean;
+    it: boolean;
+  };
+  dailyHealth: DailyHealthData[];
+}
+
+export interface ToolDegradationStats {
+  r7: { lost: number; gained: number; stable: number };
+  am: { lost: number; gained: number; stable: number };
+  df: { lost: number; gained: number; stable: number };
+  it: { lost: number; gained: number; stable: number };
+}
+
+export interface FiveDayActiveDrillDownResponse {
+  dateRange: {
+    startDate: string;
+    endDate: string;
+    days: number;
+  };
+  summary: {
+    totalSystems: number;
+    systemsImproved: number;
+    systemsDegraded: number;
+    systemsStable: number;
+    healthStatusBreakdown: {
+      fully: number;
+      partially: number;
+      unhealthy: number;
+    };
+    toolDegradation: ToolDegradationStats;
+  };
+  systems: FiveDayActiveSystemDetail[];
+}

@@ -1025,6 +1025,202 @@ export class SystemsService {
   }
 
   /**
+   * Get detailed drill-down data for 5-day consecutive active systems
+   */
+  async getFiveDayActiveDrillDown(date: string, env?: string) {
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const startDate = new Date(targetDate);
+    startDate.setDate(startDate.getDate() - 4); // 5 days total including target date
+    startDate.setHours(0, 0, 0, 0);
+
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Get all systems for the target date
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.importDate >= :targetDate', { targetDate })
+      .andWhere('snapshot.importDate < :nextDay', { nextDay })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' })
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' });
+
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+
+    const snapshots = await queryBuilder.getMany();
+
+    // Get unique systems
+    const latestSnapshotPerSystem = new Map<string, typeof snapshots[0]>();
+    snapshots.forEach((snapshot) => {
+      const existing = latestSnapshotPerSystem.get(snapshot.shortname);
+      if (!existing || snapshot.id > existing.id) {
+        latestSnapshotPerSystem.set(snapshot.shortname, snapshot);
+      }
+    });
+
+    // Filter to only systems that have been consecutively active for 5 days
+    const consecutiveActiveSystems = [];
+    for (const [shortname, snapshot] of latestSnapshotPerSystem.entries()) {
+      const isConsecutive = await this.isConsecutivelyActive(
+        shortname,
+        targetDate,
+        5,
+        env
+      );
+      if (isConsecutive) {
+        consecutiveActiveSystems.push({ shortname, snapshot });
+      }
+    }
+
+    // For each system, get health data for all 5 days
+    const systemsWithHistory = [];
+    const toolDegradationStats = {
+      r7: { lost: 0, gained: 0, stable: 0 },
+      am: { lost: 0, gained: 0, stable: 0 },
+      df: { lost: 0, gained: 0, stable: 0 },
+      it: { lost: 0, gained: 0, stable: 0 },
+    };
+
+    for (const { shortname, snapshot } of consecutiveActiveSystems) {
+      // Get snapshots for all 5 days
+      const historyQueryBuilder = this.snapshotRepository
+        .createQueryBuilder('snapshot')
+        .where('snapshot.shortname = :shortname', { shortname })
+        .andWhere('snapshot.importDate >= :startDate', { startDate })
+        .andWhere('snapshot.importDate < :nextDay', { nextDay })
+        .orderBy('snapshot.importDate', 'ASC');
+
+      if (env) {
+        historyQueryBuilder.andWhere('snapshot.env = :env', { env });
+      }
+
+      const historySnapshots = await historyQueryBuilder.getMany();
+
+      // Group by date and get latest per day
+      const snapshotsByDate = new Map<string, typeof historySnapshots[0]>();
+      historySnapshots.forEach((s) => {
+        const date = s.importDate instanceof Date ? s.importDate : new Date(s.importDate);
+        const dateKey = date.toISOString().split('T')[0];
+        const existing = snapshotsByDate.get(dateKey);
+        if (!existing || s.id > existing.id) {
+          snapshotsByDate.set(dateKey, s);
+        }
+      });
+
+      // Build daily health data
+      const dailyHealth = [];
+      const dates = Array.from(snapshotsByDate.keys()).sort();
+      
+      for (const dateKey of dates) {
+        const snap = snapshotsByDate.get(dateKey)!;
+        const refDate = new Date(dateKey);
+        const healthStatus = this.calculateSystemHealth(snap, refDate);
+        const healthScore = this.calculateHealthScore(snap, refDate);
+
+        dailyHealth.push({
+          date: dateKey,
+          healthStatus,
+          healthScore,
+          toolStatus: {
+            r7: snap.r7Found === 1,
+            am: snap.amFound === 1,
+            df: snap.dfFound === 1,
+            it: snap.itFound === 1,
+          },
+        });
+      }
+
+      // Calculate health change (first day vs last day)
+      let healthChange = 'stable';
+      let healthScoreChange = 0;
+      if (dailyHealth.length >= 2) {
+        const firstDay = dailyHealth[0];
+        const lastDay = dailyHealth[dailyHealth.length - 1];
+        healthScoreChange = lastDay.healthScore - firstDay.healthScore;
+        
+        if (healthScoreChange > 0) {
+          healthChange = 'improved';
+        } else if (healthScoreChange < 0) {
+          healthChange = 'degraded';
+        }
+
+        // Track tool-specific changes
+        const tools = ['r7', 'am', 'df', 'it'] as const;
+        tools.forEach((tool) => {
+          const firstStatus = firstDay.toolStatus[tool];
+          const lastStatus = lastDay.toolStatus[tool];
+          
+          if (firstStatus && !lastStatus) {
+            toolDegradationStats[tool].lost++;
+          } else if (!firstStatus && lastStatus) {
+            toolDegradationStats[tool].gained++;
+          } else {
+            toolDegradationStats[tool].stable++;
+          }
+        });
+      }
+
+      // Get current health status
+      const currentHealthStatus = this.calculateSystemHealth(snapshot, targetDate);
+      const currentHealthScore = this.calculateHealthScore(snapshot, targetDate);
+
+      systemsWithHistory.push({
+        shortname,
+        fullname: snapshot.fullname,
+        env: snapshot.env,
+        currentHealthStatus,
+        currentHealthScore,
+        healthChange,
+        healthScoreChange: Math.round(healthScoreChange * 100) / 100,
+        currentToolStatus: {
+          r7: snapshot.r7Found === 1,
+          am: snapshot.amFound === 1,
+          df: snapshot.dfFound === 1,
+          it: snapshot.itFound === 1,
+        },
+        dailyHealth,
+      });
+    }
+
+    // Sort systems by health change (degraded first, then stable, then improved)
+    systemsWithHistory.sort((a, b) => {
+      if (a.healthChange === 'degraded' && b.healthChange !== 'degraded') return -1;
+      if (a.healthChange !== 'degraded' && b.healthChange === 'degraded') return 1;
+      if (a.healthChange === 'stable' && b.healthChange === 'improved') return -1;
+      if (a.healthChange === 'improved' && b.healthChange === 'stable') return 1;
+      return b.healthScoreChange - a.healthScoreChange;
+    });
+
+    // Calculate summary statistics
+    const summary = {
+      totalSystems: systemsWithHistory.length,
+      systemsImproved: systemsWithHistory.filter(s => s.healthChange === 'improved').length,
+      systemsDegraded: systemsWithHistory.filter(s => s.healthChange === 'degraded').length,
+      systemsStable: systemsWithHistory.filter(s => s.healthChange === 'stable').length,
+      healthStatusBreakdown: {
+        fully: systemsWithHistory.filter(s => s.currentHealthStatus === 'fully').length,
+        partially: systemsWithHistory.filter(s => s.currentHealthStatus === 'partially').length,
+        unhealthy: systemsWithHistory.filter(s => s.currentHealthStatus === 'unhealthy').length,
+      },
+      toolDegradation: toolDegradationStats,
+    };
+
+    return {
+      dateRange: {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: targetDate.toISOString().split('T')[0],
+        days: 5,
+      },
+      summary,
+      systems: systemsWithHistory,
+    };
+  }
+
+  /**
    * Calculate trend for a specific tool
    */
   private calculateToolTrend(trendData: any[], tool: 'r7' | 'am' | 'df' | 'it') {
