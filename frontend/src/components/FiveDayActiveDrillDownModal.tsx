@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { systemsApi } from '../services/api';
-import type { FiveDayActiveDrillDownResponse, FiveDayActiveSystemDetail } from '../types';
+import type { FiveDayActiveDrillDownResponse } from '../types';
 import './ComplianceDashboard.css';
 
 interface FiveDayActiveDrillDownModalProps {
