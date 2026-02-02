@@ -782,7 +782,8 @@ export class StabilityScoringService {
       const systemSnapshots = snapshotsBySystem.get(shortname) || [];
       if (systemSnapshots.length > 0) {
         const metric = this.analyzeSystemStabilityFromSnapshots(shortname, systemSnapshots, endDate);
-        if (metric && metric.recoveryStatus !== 'NOT_APPLICABLE') {
+        // Only include systems that are actively recovering or stuck - exclude FULLY_RECOVERED and NOT_APPLICABLE
+        if (metric && metric.recoveryStatus !== 'NOT_APPLICABLE' && metric.recoveryStatus !== 'FULLY_RECOVERED') {
           const recoveryAnalysis = this.determineRecoveryStatus(
             metric.currentHealthStatus,
             metric.previousHealthStatus,

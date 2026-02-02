@@ -222,6 +222,15 @@ export const analyticsApi = {
     const response = await api.get(`/analytics/system-insights/${shortname}?${params.toString()}`);
     return response.data;
   },
+
+  // Get tooling combination analysis
+  getToolingCombinations: async (env?: string) => {
+    const params = new URLSearchParams();
+    if (env) params.append('env', env);
+    
+    const response = await api.get(`/analytics/tooling-combinations?${params.toString()}`);
+    return response.data;
+  },
 };
 
 export default api;

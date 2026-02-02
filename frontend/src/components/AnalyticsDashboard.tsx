@@ -194,7 +194,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
     );
   }
 
-  const { overview, criticalInsights, r7GapSummary, recoverySummary, actionItems } = data;
+  const { overview, criticalInsights, r7GapSummary, recoverySummary, toolingCombinations, actionItems } = data;
 
   return (
     <div className="compliance-dashboard analytics-dashboard">
@@ -524,6 +524,120 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
             <strong>💡 Recovery Intelligence:</strong> The system tracks when systems start improving
             and monitors their progress. Normal recovery completes within 2 days, while stuck recovery
             indicates systems that may need manual intervention after 3+ days.
+          </div>
+        </div>
+      )}
+
+      {/* Tooling Combination Analysis */}
+      {toolingCombinations && toolingCombinations.combinations.length > 0 && (
+        <div className="analytics-section">
+          <h3>🔧 Tooling Health Analysis</h3>
+          <div className="tooling-combinations-summary">
+            <div className="combination-stat">
+              <div className="combination-label">Total Unhealthy Systems</div>
+              <div className="combination-value warning">{toolingCombinations.totalUnhealthySystems}</div>
+              <div className="combination-description">
+                Systems missing at least one security tool
+              </div>
+            </div>
+            <div className="combination-stat">
+              <div className="combination-label">Single Tool Missing</div>
+              <div className="combination-value info">{toolingCombinations.insights.systemsMissingSingleTool}</div>
+              <div className="combination-description">
+                {toolingCombinations.totalUnhealthySystems > 0
+                  ? `${Math.round((toolingCombinations.insights.systemsMissingSingleTool / toolingCombinations.totalUnhealthySystems) * 100)}% of unhealthy systems`
+                  : '0%'}
+              </div>
+            </div>
+            <div className="combination-stat">
+              <div className="combination-label">Multiple Tools Missing</div>
+              <div className="combination-value warning">{toolingCombinations.insights.systemsMissingMultipleTools}</div>
+              <div className="combination-description">
+                {toolingCombinations.totalUnhealthySystems > 0
+                  ? `${Math.round((toolingCombinations.insights.systemsMissingMultipleTools / toolingCombinations.totalUnhealthySystems) * 100)}% of unhealthy systems`
+                  : '0%'}
+              </div>
+            </div>
+            <div className="combination-stat">
+              <div className="combination-label">All Tools Missing</div>
+              <div className="combination-value error">{toolingCombinations.insights.systemsMissingAllTools}</div>
+              <div className="combination-description">
+                Critical - requires immediate attention
+              </div>
+            </div>
+          </div>
+
+          <div className="tooling-combinations-insight">
+            <strong>💡 Key Insight:</strong>
+            {toolingCombinations.insights.mostCommonSingleMissing && (
+              <span> The most common single missing tool is <strong>{toolingCombinations.insights.mostCommonSingleMissing}</strong> affecting <strong>{toolingCombinations.insights.mostCommonSingleMissingCount}</strong> systems.
+              Fixing this would improve health for {Math.round((toolingCombinations.insights.mostCommonSingleMissingCount / toolingCombinations.totalUnhealthySystems) * 100)}% of unhealthy systems.</span>
+            )}
+          </div>
+
+          <div className="combinations-breakdown">
+            <h4>Missing Tool Combinations</h4>
+            <div className="combinations-list">
+              {toolingCombinations.combinations.slice(0, 10).map((combo: any, index: number) => (
+                <div key={index} className="combination-card">
+                  <div className="combination-header">
+                    <div className="combination-tools">
+                      {combo.missingTools.map((tool: string, idx: number) => (
+                        <span key={idx} className="tool-badge missing">
+                          {tool}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="combination-stats">
+                      <span className="combo-count">{combo.systemCount} systems</span>
+                      <span className="combo-percentage">{combo.percentage}%</span>
+                    </div>
+                  </div>
+                  <div className="combination-impact">
+                    <div className="impact-bar">
+                      <div
+                        className="impact-fill"
+                        style={{ width: `${combo.percentage}%` }}
+                      ></div>
+                    </div>
+                    <div className="impact-text">
+                      Fixing these systems would improve overall tooling health by <strong>{combo.potentialHealthIncrease}%</strong>
+                    </div>
+                  </div>
+                  {combo.systems.length > 0 && (
+                    <details className="combination-systems">
+                      <summary>View affected systems ({combo.systems.length})</summary>
+                      <div className="systems-grid">
+                        {combo.systems.slice(0, 20).map((system: string, sIdx: number) => (
+                          <span
+                            key={sIdx}
+                            className="system-tag clickable"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSystemClick(system);
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            {system}
+                          </span>
+                        ))}
+                        {combo.systems.length > 20 && (
+                          <span className="system-tag more">
+                            +{combo.systems.length - 20} more
+                          </span>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              ))}
+            </div>
+            {toolingCombinations.combinations.length > 10 && (
+              <div className="combinations-note">
+                Showing top 10 of {toolingCombinations.combinations.length} combinations
+              </div>
+            )}
           </div>
         </div>
       )}

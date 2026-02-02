@@ -11,6 +11,7 @@ import {
   RecoveryStatusResponseDto,
   SystemInsightsResponseDto,
   AnalyticsSummaryResponseDto,
+  ToolingCombinationAnalysisDto,
 } from './dto/analytics-response.dto';
 import { SystemStabilityMetrics } from './interfaces/stability-classification.interface';
 
@@ -309,6 +310,132 @@ export class AnalyticsService {
   }
 
   /**
+   * Get tooling combination analysis
+   */
+  async getToolingCombinationAnalysis(env?: string): Promise<ToolingCombinationAnalysisDto> {
+    this.logger.log(`Getting tooling combination analysis${env ? ` for ${env}` : ''}`);
+
+    // Get latest snapshot date
+    const latestDateResult = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' })
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' })
+      .getRawOne();
+
+    if (!latestDateResult?.maxDate) {
+      return {
+        totalUnhealthySystems: 0,
+        combinations: [],
+        insights: {
+          mostCommonSingleMissing: null,
+          mostCommonSingleMissingCount: 0,
+          systemsMissingAllTools: 0,
+          systemsMissingMultipleTools: 0,
+          systemsMissingSingleTool: 0,
+        },
+      };
+    }
+
+    const latestDate = new Date(latestDateResult.maxDate);
+
+    // Get all systems from latest snapshot that are unhealthy or partially healthy
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' })
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' })
+      .andWhere('snapshot.itFound = 1') // Only active systems
+      .andWhere('(snapshot.itLagDays IS NULL OR snapshot.itLagDays <= 15)'); // Not inactive
+
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+
+    const snapshots = await queryBuilder.getMany();
+
+    // Filter to only unhealthy/partially healthy systems (missing at least one tool)
+    const HEALTH_GRACE_PERIOD_DAYS = 3;
+    const unhealthySystems = snapshots.filter(s => {
+      const healthTools = [
+        s.r7Found === 1 || (s.r7LagDays !== null && s.r7LagDays <= HEALTH_GRACE_PERIOD_DAYS),
+        s.amFound === 1 || (s.amLagDays !== null && s.amLagDays <= HEALTH_GRACE_PERIOD_DAYS),
+        s.dfFound === 1 || (s.dfLagDays !== null && s.dfLagDays <= HEALTH_GRACE_PERIOD_DAYS),
+      ].filter(Boolean).length;
+      return healthTools < 3; // Not fully healthy
+    });
+
+    // Build combinations map
+    const combinationsMap = new Map<string, { systems: string[], missingTools: string[] }>();
+
+    for (const snapshot of unhealthySystems) {
+      const missingTools: string[] = [];
+      
+      // Check which tools are missing (not found and not within grace period)
+      if (!(snapshot.r7Found === 1 || (snapshot.r7LagDays !== null && snapshot.r7LagDays <= HEALTH_GRACE_PERIOD_DAYS))) {
+        missingTools.push('Rapid7');
+      }
+      if (!(snapshot.amFound === 1 || (snapshot.amLagDays !== null && snapshot.amLagDays <= HEALTH_GRACE_PERIOD_DAYS))) {
+        missingTools.push('Automox');
+      }
+      if (!(snapshot.dfFound === 1 || (snapshot.dfLagDays !== null && snapshot.dfLagDays <= HEALTH_GRACE_PERIOD_DAYS))) {
+        missingTools.push('Defender');
+      }
+
+      if (missingTools.length > 0) {
+        const key = missingTools.sort().join('+');
+        if (!combinationsMap.has(key)) {
+          combinationsMap.set(key, { systems: [], missingTools });
+        }
+        combinationsMap.get(key)!.systems.push(snapshot.shortname);
+      }
+    }
+
+    const totalUnhealthy = unhealthySystems.length;
+
+    // Convert to array and calculate percentages
+    const combinations = Array.from(combinationsMap.entries()).map(([key, data]) => ({
+      missingTools: data.missingTools,
+      systemCount: data.systems.length,
+      percentage: totalUnhealthy > 0 ? Math.round((data.systems.length / totalUnhealthy) * 100 * 10) / 10 : 0,
+      potentialHealthIncrease: totalUnhealthy > 0 ? Math.round((data.systems.length / totalUnhealthy) * 100) : 0,
+      systems: data.systems,
+    }));
+
+    // Sort by system count descending
+    combinations.sort((a, b) => b.systemCount - a.systemCount);
+
+    // Calculate insights
+    const singleToolMissing = combinations.filter(c => c.missingTools.length === 1);
+    const multipleToolsMissing = combinations.filter(c => c.missingTools.length > 1 && c.missingTools.length < 3);
+    const allToolsMissing = combinations.find(c => c.missingTools.length === 3);
+
+    let mostCommonSingleMissing: string | null = null;
+    let mostCommonSingleMissingCount = 0;
+
+    if (singleToolMissing.length > 0) {
+      const sorted = singleToolMissing.sort((a, b) => b.systemCount - a.systemCount);
+      mostCommonSingleMissing = sorted[0].missingTools[0];
+      mostCommonSingleMissingCount = sorted[0].systemCount;
+    }
+
+    const insights = {
+      mostCommonSingleMissing,
+      mostCommonSingleMissingCount,
+      systemsMissingAllTools: allToolsMissing ? allToolsMissing.systemCount : 0,
+      systemsMissingMultipleTools: multipleToolsMissing.reduce((sum, c) => sum + c.systemCount, 0),
+      systemsMissingSingleTool: singleToolMissing.reduce((sum, c) => sum + c.systemCount, 0),
+    };
+
+    return {
+      totalUnhealthySystems: totalUnhealthy,
+      combinations,
+      insights,
+    };
+  }
+
+  /**
    * Get analytics summary for dashboard
    */
   async getAnalyticsSummary(days: number = 30, env?: string): Promise<AnalyticsSummaryResponseDto> {
@@ -319,6 +446,7 @@ export class AnalyticsService {
     const r7Analysis = await this.getR7GapAnalysis(env);
     const recoveryStatus = await this.getRecoveryStatus(days, env);
     const classification = await this.getSystemClassification(days, env);
+    const toolingCombinations = await this.getToolingCombinationAnalysis(env);
 
     // Generate critical insights
     const criticalInsights: AnalyticsSummaryResponseDto['criticalInsights'] = [];
@@ -446,6 +574,7 @@ export class AnalyticsService {
       criticalInsights,
       r7GapSummary,
       recoverySummary,
+      toolingCombinations,
       actionItems,
     };
   }

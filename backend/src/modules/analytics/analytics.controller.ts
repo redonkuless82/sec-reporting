@@ -7,6 +7,7 @@ import {
   RecoveryStatusResponseDto,
   SystemInsightsResponseDto,
   AnalyticsSummaryResponseDto,
+  ToolingCombinationAnalysisDto,
 } from './dto/analytics-response.dto';
 
 @Controller('analytics')
@@ -81,6 +82,18 @@ export class AnalyticsController {
     const daysNum = days ? parseInt(days, 10) : 30;
     this.logger.log(`GET /analytics/recovery-status - days: ${daysNum}, env: ${env || 'all'}`);
     return this.analyticsService.getRecoveryStatus(daysNum, env);
+  }
+
+  /**
+   * GET /api/analytics/tooling-combinations
+   * Get tooling combination analysis
+   */
+  @Get('tooling-combinations')
+  async getToolingCombinations(
+    @Query('env') env?: string,
+  ): Promise<ToolingCombinationAnalysisDto> {
+    this.logger.log(`GET /analytics/tooling-combinations - env: ${env || 'all'}`);
+    return this.analyticsService.getToolingCombinationAnalysis(env);
   }
 
   /**

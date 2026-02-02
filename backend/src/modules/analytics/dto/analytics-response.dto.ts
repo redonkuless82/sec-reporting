@@ -115,6 +115,29 @@ export class SystemInsightsResponseDto {
 }
 
 /**
+ * Response DTO for tooling combination analysis
+ */
+export class ToolingCombinationAnalysisDto {
+  totalUnhealthySystems: number;
+  
+  combinations: {
+    missingTools: string[];
+    systemCount: number;
+    percentage: number;
+    potentialHealthIncrease: number;
+    systems: string[];
+  }[];
+  
+  insights: {
+    mostCommonSingleMissing: string | null;
+    mostCommonSingleMissingCount: number;
+    systemsMissingAllTools: number;
+    systemsMissingMultipleTools: number;
+    systemsMissingSingleTool: number;
+  };
+}
+
+/**
  * Response DTO for analytics summary (dashboard overview)
  */
 export class AnalyticsSummaryResponseDto {
@@ -139,6 +162,8 @@ export class AnalyticsSummaryResponseDto {
     stuckRecovery: number;
     averageRecoveryTime: number;
   };
+  
+  toolingCombinations?: ToolingCombinationAnalysisDto;
   
   actionItems: {
     priority: 'high' | 'medium' | 'low';
