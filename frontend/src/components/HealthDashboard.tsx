@@ -73,6 +73,7 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
   };
 
   const handleFiveDayDrillDown = () => {
+    console.log('5-Day drill-down clicked!');
     setFiveDayModalOpen(true);
   };
 
