@@ -386,8 +386,12 @@ export class StabilityScoringService {
       actionReason = reasons.join('; ');
     }
 
+    // Get current tool status from latest snapshot
+    const currentSnap = snapshots[snapshots.length - 1];
+    
     return {
       shortname,
+      env: currentSnap?.env || null,
       stabilityScore,
       classification,
       healthChangeCount,
@@ -396,6 +400,11 @@ export class StabilityScoringService {
       currentHealthStatus: currentHealth,
       previousHealthStatus: previousHealth,
       lastHealthChange,
+      // Current tool reporting status (convert from number to boolean)
+      r7Found: Boolean(currentSnap?.r7Found),
+      amFound: Boolean(currentSnap?.amFound),
+      dfFound: Boolean(currentSnap?.dfFound),
+      itFound: Boolean(currentSnap?.itFound),
       r7GapClassification: r7Analysis.classification,
       r7GapReason: r7Analysis.reason,
       recoveryStatus: recoveryAnalysis.status,
@@ -606,8 +615,12 @@ export class StabilityScoringService {
       actionReason = reasons.join('; ');
     }
 
+    // Get current tool status from latest snapshot
+    const currentSnapshot = snapshots[snapshots.length - 1];
+    
     return {
       shortname,
+      env: currentSnapshot?.env || null,
       stabilityScore,
       classification,
       healthChangeCount,
@@ -616,6 +629,11 @@ export class StabilityScoringService {
       currentHealthStatus: currentHealth,
       previousHealthStatus: previousHealth,
       lastHealthChange,
+      // Current tool reporting status (convert from number to boolean)
+      r7Found: Boolean(currentSnapshot?.r7Found),
+      amFound: Boolean(currentSnapshot?.amFound),
+      dfFound: Boolean(currentSnapshot?.dfFound),
+      itFound: Boolean(currentSnapshot?.itFound),
       r7GapClassification: r7Analysis.classification,
       r7GapReason: r7Analysis.reason,
       recoveryStatus: recoveryAnalysis.status,

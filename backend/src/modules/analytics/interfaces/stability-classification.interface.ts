@@ -33,6 +33,7 @@ export type RecoveryStatus =
  */
 export interface SystemStabilityMetrics {
   shortname: string;
+  env: string | null;                        // Environment
   stabilityScore: number;                    // 0-100, higher is more stable
   classification: StabilityClassification;
   healthChangeCount: number;                 // Number of health status changes
@@ -41,6 +42,11 @@ export interface SystemStabilityMetrics {
   currentHealthStatus: 'fully' | 'partially' | 'unhealthy' | 'inactive';
   previousHealthStatus: 'fully' | 'partially' | 'unhealthy' | 'inactive' | null;
   lastHealthChange: Date | null;             // When health status last changed
+  // Current tool reporting status
+  r7Found: boolean;                          // Is R7 currently reporting
+  amFound: boolean;                          // Is Automox currently reporting
+  dfFound: boolean;                          // Is Defender currently reporting
+  itFound: boolean;                          // Is Intune currently reporting
   r7GapClassification: R7GapClassification;
   r7GapReason: string;                       // Human-readable explanation
   recoveryStatus: RecoveryStatus;

@@ -13,14 +13,11 @@ interface SystemWithDetails {
   recoveryDays: number | null;
   isActionable: boolean;
   actionReason: string | null;
-  healthHistory: {
-    date: Date;
-    healthStatus: string;
-    r7Found: boolean;
-    amFound: boolean;
-    dfFound: boolean;
-    itFound: boolean;
-  }[];
+  // Current tool status
+  r7Found: boolean;
+  amFound: boolean;
+  dfFound: boolean;
+  itFound: boolean;
 }
 
 interface Tooltip {
@@ -97,8 +94,7 @@ export default function AnalyticsDetailPage() {
         (system: any) => system.classification === classification
       );
       
-      // Don't fetch insights for all systems - just use the data we have
-      // Only fetch insights on-demand for degrading systems when needed
+      // Map systems with current tool status from backend
       const systemsWithDetails = filteredSystems.map((system: any) => ({
         shortname: system.shortname,
         env: system.env,
@@ -109,7 +105,11 @@ export default function AnalyticsDetailPage() {
         recoveryDays: system.recoveryDays,
         isActionable: system.isActionable,
         actionReason: system.actionReason,
-        healthHistory: [], // Will be loaded on-demand if needed
+        // Current tool status from backend
+        r7Found: system.r7Found || false,
+        amFound: system.amFound || false,
+        dfFound: system.dfFound || false,
+        itFound: system.itFound || false,
       }));
       
       setAllSystems(systemsWithDetails);
@@ -129,81 +129,12 @@ export default function AnalyticsDetailPage() {
   };
 
   const getToolStatus = (system: SystemWithDetails) => {
-    const latestHealth = system.healthHistory && system.healthHistory.length > 0
-      ? system.healthHistory[system.healthHistory.length - 1]
-      : null;
-
-    if (!latestHealth) {
-      return { r7: false, am: false, df: false, it: false };
-    }
-
     return {
-      r7: latestHealth.r7Found,
-      am: latestHealth.amFound,
-      df: latestHealth.dfFound,
-      it: latestHealth.itFound,
+      r7: system.r7Found,
+      am: system.amFound,
+      df: system.dfFound,
+      it: system.itFound,
     };
-  };
-
-  const getHistoricalHealthStatus = (system: SystemWithDetails) => {
-    if (!system.healthHistory || system.healthHistory.length === 0) {
-      return { wasHealthy: false, daysNotReporting: 0, lastHealthyDate: null };
-    }
-
-    // Find the most recent healthy status
-    let wasHealthy = false;
-    let lastHealthyDate: Date | null = null;
-    let daysNotReporting = 0;
-
-    for (let i = system.healthHistory.length - 1; i >= 0; i--) {
-      const entry = system.healthHistory[i];
-      if (entry.healthStatus === 'FULLY_HEALTHY') {
-        wasHealthy = true;
-        lastHealthyDate = new Date(entry.date);
-        // Calculate days since last healthy
-        const today = new Date();
-        daysNotReporting = Math.floor((today.getTime() - lastHealthyDate.getTime()) / (1000 * 60 * 60 * 24));
-        break;
-      }
-    }
-
-    return { wasHealthy, daysNotReporting, lastHealthyDate };
-  };
-
-  const getDaysNotReporting = (system: SystemWithDetails) => {
-    if (!system.healthHistory || system.healthHistory.length === 0) {
-      return null;
-    }
-
-    const toolStatus = getToolStatus(system);
-    const missingTools = [];
-    if (!toolStatus.r7) missingTools.push('R7');
-    if (!toolStatus.am) missingTools.push('Automox');
-    if (!toolStatus.df) missingTools.push('Defender');
-
-    if (missingTools.length === 0) return null;
-
-    // Find when each tool stopped reporting
-    const toolLastSeen: { [key: string]: number } = {};
-    
-    for (let i = system.healthHistory.length - 1; i >= 0; i--) {
-      const entry = system.healthHistory[i];
-      const entryDate = new Date(entry.date);
-      const today = new Date();
-      const daysAgo = Math.floor((today.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-
-      if (!toolStatus.r7 && entry.r7Found && !toolLastSeen['R7']) {
-        toolLastSeen['R7'] = daysAgo;
-      }
-      if (!toolStatus.am && entry.amFound && !toolLastSeen['Automox']) {
-        toolLastSeen['Automox'] = daysAgo;
-      }
-      if (!toolStatus.df && entry.dfFound && !toolLastSeen['Defender']) {
-        toolLastSeen['Defender'] = daysAgo;
-      }
-    }
-
-    return { missingTools, toolLastSeen };
   };
 
   const showTooltip = (content: string, event: React.MouseEvent) => {
@@ -428,18 +359,6 @@ export default function AnalyticsDetailPage() {
                         </span>
                       </th>
                       <th>Tool Status (Current)</th>
-                      {classification === 'DEGRADING' && (
-                        <th>
-                          Historical Health
-                          <span 
-                            className="info-icon"
-                            onMouseEnter={(e) => showTooltip('Shows if system was healthy before and when it degraded', e)}
-                            onMouseLeave={hideTooltip}
-                          >
-                            ℹ️
-                          </span>
-                        </th>
-                      )}
                       <th>Recovery</th>
                       <th>Action Reason</th>
                     </tr>
@@ -447,8 +366,6 @@ export default function AnalyticsDetailPage() {
                   <tbody>
                     {displayedSystems.map((system, index) => {
                       const toolStatus = getToolStatus(system);
-                      const historicalStatus = getHistoricalHealthStatus(system);
-                      const notReportingInfo = getDaysNotReporting(system);
                       
                       return (
                         <tr key={index}>
@@ -540,38 +457,6 @@ export default function AnalyticsDetailPage() {
                               </div>
                             </div>
                           </td>
-                          {classification === 'DEGRADING' && (
-                            <td>
-                              <div className="historical-status">
-                                {historicalStatus.wasHealthy ? (
-                                  <>
-                                    <div className="was-healthy">
-                                      ✅ Was Healthy
-                                    </div>
-                                    {historicalStatus.lastHealthyDate && (
-                                      <div className="last-healthy-date">
-                                        Last healthy: {historicalStatus.daysNotReporting} days ago
-                                      </div>
-                                    )}
-                                    {notReportingInfo && notReportingInfo.missingTools.length > 0 && (
-                                      <div className="missing-tools-info">
-                                        <strong>Stopped reporting:</strong>
-                                        {notReportingInfo.missingTools.map((tool, idx) => (
-                                          <div key={idx} className="tool-missing-detail">
-                                            • {tool}: {notReportingInfo.toolLastSeen[tool] || '?'} days ago
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </>
-                                ) : (
-                                  <div className="no-healthy-history">
-                                    No healthy history found
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          )}
                           <td>
                             {system.recoveryStatus && system.recoveryStatus !== 'NOT_APPLICABLE' ? (
                               <div className="recovery-cell">
