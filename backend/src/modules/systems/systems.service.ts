@@ -161,7 +161,9 @@ export class SystemsService {
 
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
-      .where('snapshot.shortname = :shortname', { shortname });
+      .where('snapshot.shortname = :shortname', { shortname })
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     if (startDate) {
       queryBuilder.andWhere('snapshot.importDate >= :startDate', { startDate });
@@ -195,6 +197,8 @@ export class SystemsService {
       .where('snapshot.shortname = :shortname', { shortname })
       .andWhere('snapshot.importDate >= :startDate', { startDate })
       .andWhere('snapshot.importDate <= :endDate', { endDate })
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .orderBy('snapshot.importDate', 'ASC')
       .getMany();
 
@@ -237,12 +241,17 @@ export class SystemsService {
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     const latestSnapshots = latestImportDate?.maxDate
-      ? await this.snapshotRepository.count({
-          where: { importDate: latestImportDate.maxDate },
-        })
+      ? await this.snapshotRepository
+          .createQueryBuilder('snapshot')
+          .where('snapshot.importDate = :importDate', { importDate: latestImportDate.maxDate })
+          .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+          .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
+          .getCount()
       : 0;
 
     return {
@@ -257,6 +266,8 @@ export class SystemsService {
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     if (!latestImportDate?.maxDate) {
@@ -280,7 +291,9 @@ export class SystemsService {
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('snapshot.importDate >= :today', { today })
-      .andWhere('snapshot.importDate < :tomorrow', { tomorrow });
+      .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
     
     // Apply environment filter if provided
     if (env) {
@@ -306,6 +319,8 @@ export class SystemsService {
         .createQueryBuilder('snapshot')
         .where('snapshot.shortname = :shortname', { shortname })
         .andWhere('snapshot.importDate < :today', { today })
+        .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+        .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
         .limit(1)
         .getOne();
 
@@ -332,6 +347,8 @@ export class SystemsService {
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     if (!latestImportDate?.maxDate) {
@@ -357,7 +374,9 @@ export class SystemsService {
     const todayQueryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
-      .where('DATE(snapshot.importDate) = DATE(:today)', { today });
+      .where('DATE(snapshot.importDate) = DATE(:today)', { today })
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
     
     if (env) {
       todayQueryBuilder.andWhere('snapshot.env = :env', { env });
@@ -387,6 +406,8 @@ export class SystemsService {
         const lastSnapshot = await this.snapshotRepository
           .createQueryBuilder('snapshot')
           .where('snapshot.shortname = :shortname', { shortname: system.shortname })
+          .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+          .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
           .orderBy('snapshot.importDate', 'DESC')
           .limit(1)
           .getOne();
@@ -429,7 +450,9 @@ export class SystemsService {
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :startDate', { startDate })
       .andWhere('snapshot.importDate <= :endDate', { endDate })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)'); // Exclude fake systems
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)') // Exclude fake systems
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     // Apply environment filter if provided
     if (env) {
@@ -750,7 +773,9 @@ export class SystemsService {
         .where('snapshot.shortname = :shortname', { shortname })
         .andWhere('snapshot.importDate >= :date', { date })
         .andWhere('snapshot.importDate < :nextDay', { nextDay })
-        .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+        .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+        .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+        .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
       if (env) {
         queryBuilder.andWhere('snapshot.env = :env', { env });
@@ -786,7 +811,9 @@ export class SystemsService {
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :targetDate', { targetDate })
       .andWhere('snapshot.importDate < :nextDay', { nextDay })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     if (env) {
       queryBuilder.andWhere('snapshot.env = :env', { env });
@@ -887,7 +914,9 @@ export class SystemsService {
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :endDate', { endDate: endDateCopy })
       .andWhere('snapshot.importDate < :endNextDay', { endNextDay })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     if (env) {
       queryBuilder.andWhere('snapshot.env = :env', { env });
@@ -1040,6 +1069,8 @@ export class SystemsService {
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     if (!latestImportDate?.maxDate) {
@@ -1057,7 +1088,9 @@ export class SystemsService {
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :today', { today })
       .andWhere('snapshot.importDate < :nextDay', { nextDay })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     if (env) {
       queryBuilder.andWhere('snapshot.env = :env', { env });
@@ -1097,6 +1130,8 @@ export class SystemsService {
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     if (!latestImportDate?.maxDate) {
@@ -1114,7 +1149,9 @@ export class SystemsService {
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :today', { today })
       .andWhere('snapshot.importDate < :nextDay', { nextDay })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     if (env) {
       queryBuilder.andWhere('snapshot.env = :env', { env });
@@ -1159,7 +1196,9 @@ export class SystemsService {
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :targetDate', { targetDate })
       .andWhere('snapshot.importDate < :nextDay', { nextDay })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)'); // Exclude fake systems
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)') // Exclude fake systems
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     // Apply environment filter if provided
     if (env) {
@@ -1198,6 +1237,8 @@ export class SystemsService {
           .createQueryBuilder('snapshot')
           .where('snapshot.shortname = :shortname', { shortname })
           .andWhere('snapshot.importDate < :targetDate', { targetDate })
+          .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+          .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
           .limit(1)
           .getOne();
 
@@ -1281,6 +1322,8 @@ export class SystemsService {
       .select('DISTINCT snapshot.env', 'env')
       .where('snapshot.env IS NOT NULL')
       .andWhere('snapshot.env != :empty', { empty: '' })
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .orderBy('snapshot.env', 'ASC')
       .getRawMany();
 
@@ -1294,6 +1337,8 @@ export class SystemsService {
     const latestImportDate = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     if (!latestImportDate?.maxDate) {
@@ -1316,7 +1361,9 @@ export class SystemsService {
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('snapshot.importDate >= :today', { today })
       .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
     
     if (env) {
       queryBuilder.andWhere('snapshot.env = :env', { env });
@@ -1335,6 +1382,8 @@ export class SystemsService {
         .createQueryBuilder('snapshot')
         .where('snapshot.shortname = :shortname', { shortname })
         .andWhere('snapshot.importDate < :today', { today })
+        .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+        .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
         .orderBy('snapshot.importDate', 'DESC')
         .limit(1)
         .getOne();

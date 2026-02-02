@@ -290,6 +290,8 @@ export class StabilityScoringService {
       .andWhere('snapshot.importDate >= :startDate', { startDate })
       .andWhere('snapshot.importDate <= :endDate', { endDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .orderBy('snapshot.importDate', 'ASC')
       .getMany();
 
@@ -436,6 +438,8 @@ export class StabilityScoringService {
     const latestDateResult = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     if (!latestDateResult?.maxDate) {
@@ -449,7 +453,9 @@ export class StabilityScoringService {
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     if (env) {
       systemsQueryBuilder.andWhere('snapshot.env = :env', { env });
@@ -469,6 +475,8 @@ export class StabilityScoringService {
       .andWhere('snapshot.importDate >= :startDate', { startDate })
       .andWhere('snapshot.importDate <= :endDate', { endDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .orderBy('snapshot.shortname', 'ASC')
       .addOrderBy('snapshot.importDate', 'ASC');
 
@@ -658,6 +666,8 @@ export class StabilityScoringService {
     const latestDateResult = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     if (!latestDateResult?.maxDate) {
@@ -670,7 +680,9 @@ export class StabilityScoringService {
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     if (env) {
       queryBuilder.andWhere('snapshot.env = :env', { env });
@@ -712,6 +724,8 @@ export class StabilityScoringService {
     const latestDateResult = await this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .getRawOne();
 
     if (!latestDateResult?.maxDate) {
@@ -725,7 +739,9 @@ export class StabilityScoringService {
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
       .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)');
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
 
     if (env) {
       systemsQueryBuilder.andWhere('snapshot.env = :env', { env });
@@ -745,6 +761,8 @@ export class StabilityScoringService {
       .andWhere('snapshot.importDate >= :startDate', { startDate })
       .andWhere('snapshot.importDate <= :endDate', { endDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .orderBy('snapshot.shortname', 'ASC')
       .addOrderBy('snapshot.importDate', 'ASC')
       .getMany();
