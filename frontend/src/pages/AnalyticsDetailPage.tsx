@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { analyticsApi, systemsApi } from '../services/api';
+import { analyticsApi } from '../services/api';
 import './AnalyticsDetailPage.css';
 
 interface SystemWithDetails {
