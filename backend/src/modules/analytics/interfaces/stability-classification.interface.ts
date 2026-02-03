@@ -107,4 +107,11 @@ export interface RecoveryTracking {
   isStuck: boolean;
   expectedRecoveryTime: number;            // Expected days to recover
   explanation: string;
+  // Tool recovery tracking
+  toolsRecovered?: {
+    r7: boolean;
+    automox: boolean;
+    defender: boolean;
+    intune: boolean;
+  };
 }

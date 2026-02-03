@@ -509,6 +509,7 @@ export class AnalyticsService {
     const recoverySummary = {
       normalRecovery: recoveryStatus.normalRecovery,
       stuckRecovery: recoveryStatus.stuckRecovery,
+      fullyRecovered: recoveryStatus.fullyRecovered,
       averageRecoveryTime: recoveryStatus.averageRecoveryTime,
     };
 

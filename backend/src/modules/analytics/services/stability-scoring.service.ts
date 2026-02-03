@@ -796,6 +796,17 @@ export class StabilityScoringService {
             metric.recoveryDays,
           );
 
+          // Determine which tools recovered by comparing current vs previous snapshots
+          const latestSnapshot = systemSnapshots[systemSnapshots.length - 1];
+          const previousSnapshot = systemSnapshots.length > 1 ? systemSnapshots[systemSnapshots.length - 2] : null;
+          
+          const toolsRecovered = previousSnapshot ? {
+            r7: (latestSnapshot.r7Found === 1) && (previousSnapshot.r7Found !== 1),
+            automox: (latestSnapshot.amFound === 1) && (previousSnapshot.amFound !== 1),
+            defender: (latestSnapshot.dfFound === 1) && (previousSnapshot.dfFound !== 1),
+            intune: (latestSnapshot.itFound === 1) && (previousSnapshot.itFound !== 1),
+          } : undefined;
+
           trackings.push({
             shortname: shortname,
             status: metric.recoveryStatus,
@@ -806,6 +817,7 @@ export class StabilityScoringService {
             isStuck: recoveryAnalysis.isStuck,
             expectedRecoveryTime: this.NORMAL_RECOVERY_DAYS,
             explanation: recoveryAnalysis.explanation,
+            toolsRecovered,
           });
         }
       }

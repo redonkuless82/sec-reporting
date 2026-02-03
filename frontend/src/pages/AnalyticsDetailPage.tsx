@@ -18,6 +18,13 @@ interface SystemWithDetails {
   amFound: boolean;
   dfFound: boolean;
   itFound: boolean;
+  // Tools that recovered (if in recovery)
+  toolsRecovered?: {
+    r7: boolean;
+    automox: boolean;
+    defender: boolean;
+    intune: boolean;
+  };
 }
 
 interface Tooltip {
@@ -110,6 +117,8 @@ export default function AnalyticsDetailPage() {
         amFound: system.amFound || false,
         dfFound: system.dfFound || false,
         itFound: system.itFound || false,
+        // Tools that recovered
+        toolsRecovered: system.toolsRecovered,
       }));
       
       setAllSystems(systemsWithDetails);
@@ -460,11 +469,11 @@ export default function AnalyticsDetailPage() {
                           <td>
                             {system.recoveryStatus && system.recoveryStatus !== 'NOT_APPLICABLE' ? (
                               <div className="recovery-cell">
-                                <span 
+                                <span
                                   className={`recovery-badge status-${system.recoveryStatus.toLowerCase()}`}
                                   onMouseEnter={(e) => showTooltip(
-                                    system.recoveryStatus === 'NORMAL_RECOVERY' 
-                                      ? 'System is recovering within expected timeframe (< 2 days)' 
+                                    system.recoveryStatus === 'NORMAL_RECOVERY'
+                                      ? 'System is recovering within expected timeframe (< 2 days)'
                                       : 'System recovery is taking longer than expected (> 3 days) - may need intervention',
                                     e
                                   )}
@@ -475,6 +484,37 @@ export default function AnalyticsDetailPage() {
                                 {system.recoveryDays !== null && (
                                   <div className="recovery-days-text">
                                     {system.recoveryDays} days
+                                  </div>
+                                )}
+                                {system.toolsRecovered && (
+                                  <div className="tools-recovered">
+                                    <div className="tools-recovered-label">Services Recovered:</div>
+                                    <div className="tools-recovered-badges">
+                                      {system.toolsRecovered.r7 && (
+                                        <span className="tool-recovered-badge" title="Rapid7 recovered">
+                                          ✅ R7
+                                        </span>
+                                      )}
+                                      {system.toolsRecovered.automox && (
+                                        <span className="tool-recovered-badge" title="Automox recovered">
+                                          ✅ Automox
+                                        </span>
+                                      )}
+                                      {system.toolsRecovered.defender && (
+                                        <span className="tool-recovered-badge" title="Defender recovered">
+                                          ✅ Defender
+                                        </span>
+                                      )}
+                                      {system.toolsRecovered.intune && (
+                                        <span className="tool-recovered-badge" title="Intune recovered">
+                                          ✅ Intune
+                                        </span>
+                                      )}
+                                      {!system.toolsRecovered.r7 && !system.toolsRecovered.automox &&
+                                       !system.toolsRecovered.defender && !system.toolsRecovered.intune && (
+                                        <span className="no-tools-recovered">No new services</span>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               </div>

@@ -135,6 +135,8 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
       reportContent += `  (Systems recovering within expected timeframe < 2 days)\n`;
       reportContent += `Stuck Recovery: ${recoverySummary.stuckRecovery}\n`;
       reportContent += `  (Systems taking longer than expected > 3 days - may need intervention)\n`;
+      reportContent += `Fully Recovered: ${recoverySummary.fullyRecovered}\n`;
+      reportContent += `  (Systems that successfully recovered to healthy state)\n`;
       reportContent += `Average Recovery Time: ${recoverySummary.averageRecoveryTime} days\n\n`;
     }
 
@@ -511,6 +513,13 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
               <div className="click-to-view">Click to view details</div>
             </div>
             <div className="recovery-stat">
+              <div className="recovery-label">Fully Recovered</div>
+              <div className="recovery-value success">{recoverySummary.fullyRecovered}</div>
+              <div className="recovery-description">
+                Systems that successfully recovered to healthy state
+              </div>
+            </div>
+            <div className="recovery-stat">
               <div className="recovery-label">Avg Recovery Time</div>
               <div className="recovery-value info">{recoverySummary.averageRecoveryTime} days</div>
               <div className="recovery-description">
@@ -523,7 +532,8 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
           <div className="recovery-details-note">
             <strong>💡 Recovery Intelligence:</strong> The system tracks when systems start improving
             and monitors their progress. Normal recovery completes within 2 days, while stuck recovery
-            indicates systems that may need manual intervention after 3+ days.
+            indicates systems that may need manual intervention after 3+ days. Fully recovered systems
+            have successfully returned to a healthy state.
           </div>
         </div>
       )}

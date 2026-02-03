@@ -160,6 +160,7 @@ export class AnalyticsSummaryResponseDto {
   recoverySummary: {
     normalRecovery: number;
     stuckRecovery: number;
+    fullyRecovered: number;
     averageRecoveryTime: number;
   };
   
