@@ -151,7 +151,10 @@ export class AnalyticsService {
             ...metric,
             env: systemEnvMap.get(shortname) || null,
           };
-          metrics.push(metricWithEnv);
+          // Only include systems that are NOT inactive (exclude inactive systems from classification stats)
+          if (metricWithEnv.currentHealthStatus !== 'inactive') {
+            metrics.push(metricWithEnv);
+          }
         }
       }
     }

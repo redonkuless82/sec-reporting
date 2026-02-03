@@ -498,7 +498,10 @@ export class StabilityScoringService {
       if (systemSnapshots.length > 0) {
         const metric = this.analyzeSystemStabilityFromSnapshots(shortname, systemSnapshots, endDate);
         if (metric) {
-          metrics.push(metric);
+          // Only include systems that are NOT inactive (exclude inactive systems from classification stats)
+          if (metric.currentHealthStatus !== 'inactive') {
+            metrics.push(metric);
+          }
         }
       }
     }
@@ -782,8 +785,11 @@ export class StabilityScoringService {
       const systemSnapshots = snapshotsBySystem.get(shortname) || [];
       if (systemSnapshots.length > 0) {
         const metric = this.analyzeSystemStabilityFromSnapshots(shortname, systemSnapshots, endDate);
-        // Only include systems that are actively recovering or stuck - exclude FULLY_RECOVERED and NOT_APPLICABLE
-        if (metric && metric.recoveryStatus !== 'NOT_APPLICABLE' && metric.recoveryStatus !== 'FULLY_RECOVERED') {
+        // Only include systems that are actively recovering or stuck - exclude FULLY_RECOVERED, NOT_APPLICABLE, and INACTIVE
+        if (metric &&
+            metric.recoveryStatus !== 'NOT_APPLICABLE' &&
+            metric.recoveryStatus !== 'FULLY_RECOVERED' &&
+            metric.currentHealthStatus !== 'inactive') {
           const recoveryAnalysis = this.determineRecoveryStatus(
             metric.currentHealthStatus,
             metric.previousHealthStatus,
