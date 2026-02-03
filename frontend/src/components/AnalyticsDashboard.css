@@ -80,6 +80,15 @@
   box-shadow: 0 8px 24px rgba(210, 153, 34, 0.3);
 }
 
+.classification-card.fully-recovered {
+  border-color: var(--accent-success, #3fb950);
+  background: rgba(63, 185, 80, 0.05);
+}
+
+.classification-card.fully-recovered:hover {
+  box-shadow: 0 8px 24px rgba(63, 185, 80, 0.3);
+}
+
 .classification-card.degrading {
   border-color: #ff6b35;
   background: rgba(255, 107, 53, 0.05);

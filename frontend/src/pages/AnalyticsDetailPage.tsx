@@ -97,9 +97,16 @@ export default function AnalyticsDetailPage() {
       const response = await analyticsApi.getSystemClassification(days, environment);
       
       // Filter systems by classification
-      const filteredSystems = response.systems.filter(
+      let filteredSystems = response.systems.filter(
         (system: any) => system.classification === classification
       );
+      
+      // If showing RECOVERING, exclude FULLY_RECOVERED systems
+      if (classification === 'RECOVERING') {
+        filteredSystems = filteredSystems.filter(
+          (system: any) => system.recoveryStatus !== 'FULLY_RECOVERED'
+        );
+      }
       
       // Map systems with current tool status from backend
       const systemsWithDetails = filteredSystems.map((system: any) => ({
@@ -488,33 +495,68 @@ export default function AnalyticsDetailPage() {
                                 )}
                                 {system.toolsRecovered && (
                                   <div className="tools-recovered">
-                                    <div className="tools-recovered-label">Services Recovered:</div>
-                                    <div className="tools-recovered-badges">
-                                      {system.toolsRecovered.r7 && (
-                                        <span className="tool-recovered-badge" title="Rapid7 recovered">
-                                          ✅ R7
-                                        </span>
-                                      )}
-                                      {system.toolsRecovered.automox && (
-                                        <span className="tool-recovered-badge" title="Automox recovered">
-                                          ✅ Automox
-                                        </span>
-                                      )}
-                                      {system.toolsRecovered.defender && (
-                                        <span className="tool-recovered-badge" title="Defender recovered">
-                                          ✅ Defender
-                                        </span>
-                                      )}
-                                      {system.toolsRecovered.intune && (
-                                        <span className="tool-recovered-badge" title="Intune recovered">
-                                          ✅ Intune
-                                        </span>
-                                      )}
-                                      {!system.toolsRecovered.r7 && !system.toolsRecovered.automox &&
-                                       !system.toolsRecovered.defender && !system.toolsRecovered.intune && (
-                                        <span className="no-tools-recovered">No new services</span>
-                                      )}
-                                    </div>
+                                    {/* PRIORITY: Show which tools MADE PROGRESS (recovered during this recovery period) */}
+                                    {(system.toolsRecovered.r7 || system.toolsRecovered.automox ||
+                                      system.toolsRecovered.defender || system.toolsRecovered.intune) ? (
+                                      <div className="tools-section progress-made">
+                                        <div className="tools-section-label progress-label">🎯 Progress Made:</div>
+                                        <div className="tools-recovered-badges">
+                                          {system.toolsRecovered.r7 && (
+                                            <span className="tool-recovered-badge" title="Rapid7 came back online during recovery">
+                                              ✅ R7 Recovered
+                                            </span>
+                                          )}
+                                          {system.toolsRecovered.automox && (
+                                            <span className="tool-recovered-badge" title="Automox came back online during recovery">
+                                              ✅ Automox Recovered
+                                            </span>
+                                          )}
+                                          {system.toolsRecovered.defender && (
+                                            <span className="tool-recovered-badge" title="Defender came back online during recovery">
+                                              ✅ Defender Recovered
+                                            </span>
+                                          )}
+                                          {system.toolsRecovered.intune && (
+                                            <span className="tool-recovered-badge" title="Intune came back online during recovery">
+                                              ✅ Intune Recovered
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="tools-section no-progress">
+                                        <div className="tools-section-label no-progress-label">⚠️ No tools recovered yet</div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Secondary: Show which tools still need recovery */}
+                                    {(!system.r7Found || !system.amFound || !system.dfFound || !system.itFound) && (
+                                      <div className="tools-section still-missing">
+                                        <div className="tools-section-label secondary-label">Still Missing:</div>
+                                        <div className="tools-not-recovered-badges">
+                                          {!system.r7Found && (
+                                            <span className="tool-not-recovered-badge" title="Rapid7 still offline">
+                                              ❌ R7
+                                            </span>
+                                          )}
+                                          {!system.amFound && (
+                                            <span className="tool-not-recovered-badge" title="Automox still offline">
+                                              ❌ Automox
+                                            </span>
+                                          )}
+                                          {!system.dfFound && (
+                                            <span className="tool-not-recovered-badge" title="Defender still offline">
+                                              ❌ Defender
+                                            </span>
+                                          )}
+                                          {!system.itFound && (
+                                            <span className="tool-not-recovered-badge" title="Intune still offline">
+                                              ❌ Intune
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
