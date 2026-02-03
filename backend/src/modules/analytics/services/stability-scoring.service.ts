@@ -640,27 +640,28 @@ export class StabilityScoringService {
     let toolsRecovered = undefined;
     let hasToolProgress = false;
     if (recoveryAnalysis.status !== 'NOT_APPLICABLE' && lastHealthChange && snapshots.length > 1) {
-      // Find snapshot closest to recovery start date
-      let recoveryStartSnapshot = snapshots[0];
+      // Find the snapshot BEFORE the recovery (the last PARTIALLY healthy snapshot)
+      // lastHealthChange is when the system BECAME fully healthy
+      // We need the snapshot from BEFORE that change
+      let beforeRecoverySnapshot = snapshots[0];
       const recoveryStartTime = new Date(lastHealthChange).getTime();
-      const firstSnapshotTime = new Date(snapshots[0].importDate).getTime();
-      let minDiff = Math.abs(firstSnapshotTime - recoveryStartTime);
       
-      for (const snapshot of snapshots) {
-        const snapshotTime = new Date(snapshot.importDate).getTime();
-        const diff = Math.abs(snapshotTime - recoveryStartTime);
-        if (diff < minDiff) {
-          minDiff = diff;
-          recoveryStartSnapshot = snapshot;
+      // Find the last snapshot BEFORE the recovery date (the PARTIALLY healthy state)
+      for (let i = snapshots.length - 1; i >= 0; i--) {
+        const snapshotTime = new Date(snapshots[i].importDate).getTime();
+        // We want the snapshot from BEFORE the recovery started
+        if (snapshotTime < recoveryStartTime) {
+          beforeRecoverySnapshot = snapshots[i];
+          break;
         }
       }
       
-      // Compare tools at recovery start vs now
+      // Compare tools BEFORE recovery vs NOW - show which tools were added
       toolsRecovered = {
-        r7: Boolean(currentSnapshot.r7Found) && !Boolean(recoveryStartSnapshot.r7Found),
-        automox: Boolean(currentSnapshot.amFound) && !Boolean(recoveryStartSnapshot.amFound),
-        defender: Boolean(currentSnapshot.dfFound) && !Boolean(recoveryStartSnapshot.dfFound),
-        intune: Boolean(currentSnapshot.itFound) && !Boolean(recoveryStartSnapshot.itFound),
+        r7: Boolean(currentSnapshot.r7Found) && !Boolean(beforeRecoverySnapshot.r7Found),
+        automox: Boolean(currentSnapshot.amFound) && !Boolean(beforeRecoverySnapshot.amFound),
+        defender: Boolean(currentSnapshot.dfFound) && !Boolean(beforeRecoverySnapshot.dfFound),
+        intune: Boolean(currentSnapshot.itFound) && !Boolean(beforeRecoverySnapshot.itFound),
       };
       
       // Check if any tools actually recovered
@@ -876,26 +877,30 @@ export class StabilityScoringService {
           let toolsRecovered = undefined;
           
           if (metric.lastHealthChange && systemSnapshots.length > 1) {
-            // Find snapshot at or just before recovery start date
+            // Find the snapshot BEFORE the recovery (the last PARTIALLY healthy snapshot)
+            // lastHealthChange is when the system BECAME fully healthy
+            // We need the snapshot from BEFORE that change
             const recoveryStartDate = new Date(metric.lastHealthChange);
             const recoveryStartTime = recoveryStartDate.getTime();
-            let recoveryStartSnapshot = systemSnapshots[0];
+            let beforeRecoverySnapshot = systemSnapshots[0];
             
-            // Find the snapshot just before the recovery started (previous unhealthy state)
+            // Find the last snapshot BEFORE the recovery date (the PARTIALLY healthy state)
             for (let i = systemSnapshots.length - 1; i >= 0; i--) {
               const snapshotTime = new Date(systemSnapshots[i].importDate).getTime();
-              if (snapshotTime <= recoveryStartTime) {
-                recoveryStartSnapshot = systemSnapshots[i];
+              // We want the snapshot from BEFORE the recovery started
+              if (snapshotTime < recoveryStartTime) {
+                beforeRecoverySnapshot = systemSnapshots[i];
                 break;
               }
             }
             
-            // Compare tools at recovery start vs now - show which tools came back
+            // Compare tools BEFORE recovery vs NOW - show which tools were added
+            // Tool is "recovered" if it's reporting NOW but was NOT reporting BEFORE
             toolsRecovered = {
-              r7: (latestSnapshot.r7Found === 1) && (recoveryStartSnapshot.r7Found !== 1),
-              automox: (latestSnapshot.amFound === 1) && (recoveryStartSnapshot.amFound !== 1),
-              defender: (latestSnapshot.dfFound === 1) && (recoveryStartSnapshot.dfFound !== 1),
-              intune: (latestSnapshot.itFound === 1) && (recoveryStartSnapshot.itFound !== 1),
+              r7: (latestSnapshot.r7Found === 1) && (beforeRecoverySnapshot.r7Found !== 1),
+              automox: (latestSnapshot.amFound === 1) && (beforeRecoverySnapshot.amFound !== 1),
+              defender: (latestSnapshot.dfFound === 1) && (beforeRecoverySnapshot.dfFound !== 1),
+              intune: (latestSnapshot.itFound === 1) && (beforeRecoverySnapshot.itFound !== 1),
             };
           }
 
