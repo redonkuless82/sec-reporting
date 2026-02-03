@@ -5,17 +5,18 @@
 The "Fully Recovered Systems" analytics page was confusing and showing incorrect data:
 
 1. **Showing 1420 systems** - far too many, including systems that recovered long ago
-2. **Showing INACTIVE systems** - systems that haven't been online in Intune for >15 days
-3. **Showing PARTIALLY healthy systems** - systems that aren't actually fully recovered
-4. **No clear indication of which tools came back** - couldn't see what made the system fully healthy
+2. **Showing INACTIVE systems** - systems that came back online (not what we want to track)
+3. **Showing systems that recovered from INACTIVE state** - these became healthy by coming back online, not by adding missing tools
+4. **No clear indication of which tools were added** - couldn't see what specific tool made the system fully healthy
 
 ## User Requirements
 
-The user wanted to see:
-- **Systems that became FULLY HEALTHY within the reporting period** (e.g., last 30 days)
-- **Only ACTIVE systems** - exclude systems that haven't been online in Intune for >15 days
-- **Systems with ALL 3 tools reporting** (R7, Automox, Defender)
-- **Which tools came back online** during the recovery period
+The user wanted to see ONLY:
+- **Systems that went from PARTIALLY healthy to FULLY healthy** (added missing tools)
+- **Example**: System was online yesterday but missing Automox → Today has all tools reporting
+- **NOT systems that came back online** (went from INACTIVE to FULLY)
+- **NOT systems that recovered from UNHEALTHY** (had no tools reporting)
+- **Show which specific tools were added** during the recovery period
 
 ## Changes Made
 
@@ -23,20 +24,29 @@ The user wanted to see:
 
 **File: `backend/src/modules/analytics/services/stability-scoring.service.ts`**
 
-#### 1. Enhanced Filtering Logic (Lines 829-851)
-- Added strict validation that system must be **currently FULLY healthy** (not just partially)
-- Ensured system **became fully healthy within the reporting period**
-- Already excluded inactive systems (systems with `currentHealthStatus === 'inactive'`)
+#### 1. Enhanced Filtering Logic (Lines 840-867)
+- Added **CRITICAL** validation that previous state must be **PARTIALLY** healthy
+- This excludes systems that recovered from INACTIVE (came back online)
+- This excludes systems that recovered from UNHEALTHY (had no tools)
+- Only includes systems that were online but missing 1-2 tools, then added those tools
 
 ```typescript
 // For FULLY_RECOVERED, only include if:
 // 1. System is currently FULLY healthy (all 3 tools reporting)
-// 2. System became fully healthy within the reporting period
-// 3. System is NOT inactive (already checked above)
+// 2. Previous state was PARTIALLY healthy (not INACTIVE or UNHEALTHY)
+// 3. System became fully healthy within the reporting period
+// This ensures we only show systems that added a missing tool, not systems that came back online
 if (metric.recoveryStatus === 'FULLY_RECOVERED') {
   // Must be currently fully healthy
   if (metric.currentHealthStatus !== 'fully') {
     continue; // Skip - not actually fully healthy
+  }
+  
+  // CRITICAL: Previous state must be PARTIALLY healthy
+  // This excludes systems that recovered from INACTIVE (came back online) or UNHEALTHY (all tools missing)
+  // We only want systems that were online but missing 1-2 tools, then added those tools
+  if (metric.previousHealthStatus !== 'partially') {
+    continue; // Skip - system recovered from inactive/unhealthy, not from missing tools
   }
   
   // Check if the system became fully healthy within the reporting period
@@ -117,7 +127,7 @@ Recovered to fully healthy in last {selectedPeriod} days
 
 To:
 ```typescript
-Became fully healthy (all tools) in last {selectedPeriod} days
+Added missing tools, now fully healthy
 ```
 
 #### 2. Updated Report Text (Line 139)
@@ -128,7 +138,7 @@ Changed from:
 
 To:
 ```typescript
-(Systems that became fully healthy with all tools reporting)
+(Systems that added missing tools and became fully healthy)
 ```
 
 #### 3. Updated Recovery Stats Description (Line 536)
@@ -139,7 +149,7 @@ Systems that successfully recovered to healthy state
 
 To:
 ```typescript
-Systems that became fully healthy (all tools reporting)
+Systems that added missing tools and became fully healthy
 ```
 
 ## Expected Results
@@ -147,28 +157,31 @@ Systems that became fully healthy (all tools reporting)
 After these changes:
 
 1. **Accurate Count**: The "Fully Recovered" count will show only systems that:
-   - Are currently FULLY healthy (all 3 tools: R7, Automox, Defender)
+   - Previous state was PARTIALLY healthy (system was online but missing 1-2 tools)
+   - Current state is FULLY healthy (all 3 tools: R7, Automox, Defender)
    - Became fully healthy within the selected time period
-   - Are ACTIVE in Intune (not offline for >15 days)
+   - Added specific tools (not just came back online)
 
-2. **No Inactive Systems**: Systems showing "INACTIVE" status will be completely excluded
+2. **No Systems That Came Back Online**: Systems with previous state "INACTIVE" are completely excluded
 
-3. **No Partially Healthy Systems**: Systems showing "PARTIALLY" status will be excluded
+3. **No Systems That Had No Tools**: Systems with previous state "UNHEALTHY" are excluded
 
-4. **Clear Tool Recovery Information**: The drill-down page will show exactly which tools came back online during the recovery period
+4. **Clear Tool Addition Information**: The drill-down page shows exactly which tools were added during the recovery period
 
-5. **Better User Understanding**: All descriptions now clearly state "all tools reporting" or "all 3 tools" to avoid confusion
+5. **Better User Understanding**: All descriptions now clearly state "added missing tools" to avoid confusion about systems coming back online
 
 ## Testing Recommendations
 
 1. Navigate to Analytics Dashboard
-2. Check the "Fully Recovered" card count - should be significantly lower than 1420
+2. Check the "Fully Recovered" card count - should be significantly lower than before
 3. Click on the "Fully Recovered" card to view details
 4. Verify:
-   - No systems with "INACTIVE" status appear
+   - No systems with "INACTIVE" as previous state appear
+   - All systems show "PARTIALLY" as previous state
    - All systems show "FULLY" as current health
-   - "Tools Recovered" column shows which specific tools came back online
+   - "Tools Recovered" column shows which specific tools were added (e.g., ✅ Automox)
    - Systems that recovered more than 30 days ago (or selected period) are not shown
+   - Systems that came back online (INACTIVE → FULLY) are NOT shown
 
 ## Technical Notes
 

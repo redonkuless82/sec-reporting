@@ -136,7 +136,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
       reportContent += `Stuck Recovery: ${recoverySummary.stuckRecovery}\n`;
       reportContent += `  (Systems taking longer than expected > 3 days - may need intervention)\n`;
       reportContent += `Fully Recovered: ${recoverySummary.fullyRecovered}\n`;
-      reportContent += `  (Systems that became fully healthy with all tools reporting)\n`;
+      reportContent += `  (Systems that added missing tools and became fully healthy)\n`;
       reportContent += `Average Recovery Time: ${recoverySummary.averageRecoveryTime} days\n\n`;
     }
 
@@ -355,7 +355,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
             onClick={() => navigate(`/analytics/fully-recovered?days=${selectedPeriod}${selectedEnvironment ? `&env=${selectedEnvironment}` : ''}`)}
             role="button"
             tabIndex={0}
-            title="Click to view systems that became fully healthy within this period"
+            title="Click to view systems that added missing tools and became fully healthy"
           >
             <div className="classification-header">
               <span className="classification-icon">✅</span>
@@ -363,7 +363,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
             </div>
             <div className="classification-count">{recoverySummary?.fullyRecovered || 0}</div>
             <div className="classification-description">
-              Became fully healthy (all tools) in last {selectedPeriod} days
+              Added missing tools, now fully healthy
             </div>
           </div>
 
@@ -533,7 +533,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
               <div className="recovery-label">Fully Recovered</div>
               <div className="recovery-value success">{recoverySummary.fullyRecovered}</div>
               <div className="recovery-description">
-                Systems that became fully healthy (all tools reporting)
+                Systems that added missing tools and became fully healthy
               </div>
             </div>
             <div className="recovery-stat">

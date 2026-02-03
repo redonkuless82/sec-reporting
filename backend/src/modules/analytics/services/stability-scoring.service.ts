@@ -839,12 +839,20 @@ export class StabilityScoringService {
           
           // For FULLY_RECOVERED, only include if:
           // 1. System is currently FULLY healthy (all 3 tools reporting)
-          // 2. System became fully healthy within the reporting period
-          // 3. System is NOT inactive (already checked above)
+          // 2. Previous state was PARTIALLY healthy (not INACTIVE or UNHEALTHY)
+          // 3. System became fully healthy within the reporting period
+          // This ensures we only show systems that added a missing tool, not systems that came back online
           if (metric.recoveryStatus === 'FULLY_RECOVERED') {
             // Must be currently fully healthy
             if (metric.currentHealthStatus !== 'fully') {
               continue; // Skip - not actually fully healthy
+            }
+            
+            // CRITICAL: Previous state must be PARTIALLY healthy
+            // This excludes systems that recovered from INACTIVE (came back online) or UNHEALTHY (all tools missing)
+            // We only want systems that were online but missing 1-2 tools, then added those tools
+            if (metric.previousHealthStatus !== 'partially') {
+              continue; // Skip - system recovered from inactive/unhealthy, not from missing tools
             }
             
             // Check if the system became fully healthy within the reporting period

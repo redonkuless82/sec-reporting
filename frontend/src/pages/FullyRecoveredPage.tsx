@@ -63,7 +63,7 @@ export default function FullyRecoveredPage() {
           <div className="header-info">
             <h1>✅ Fully Recovered Systems</h1>
             <p className="page-subtitle">
-              Systems that became fully healthy (all 3 tools reporting) within the reporting period
+              Systems that added missing tools and became fully healthy within the reporting period
             </p>
             <p className="page-meta">
               Analyzing {days} days{environment && ` • Environment: ${environment}`}
