@@ -227,10 +227,11 @@ export class AnalyticsService {
       ? Math.round(completedRecoveries.reduce((sum, t) => sum + (t.daysSinceRecoveryStart || 0), 0) / completedRecoveries.length * 10) / 10
       : 0;
 
-    const recoveringSystems = trackings.filter(t => 
+    const recoveringSystems = trackings.filter(t =>
       t.status === 'NORMAL_RECOVERY' || t.status === 'STUCK_RECOVERY' || t.status === 'NOT_RECOVERING'
     );
     const stuckSystems = trackings.filter(t => t.isStuck);
+    const fullyRecoveredSystems = trackings.filter(t => t.status === 'FULLY_RECOVERED');
 
     return {
       totalRecovering,
@@ -240,6 +241,7 @@ export class AnalyticsService {
       averageRecoveryTime,
       recoveringSystems,
       stuckSystems,
+      fullyRecoveredSystems,
     };
   }
 

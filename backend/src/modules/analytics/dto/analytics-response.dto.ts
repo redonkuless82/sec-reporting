@@ -67,6 +67,7 @@ export class RecoveryStatusResponseDto {
   averageRecoveryTime: number;
   recoveringSystems: RecoveryTracking[];
   stuckSystems: RecoveryTracking[];
+  fullyRecoveredSystems: RecoveryTracking[];
 }
 
 /**

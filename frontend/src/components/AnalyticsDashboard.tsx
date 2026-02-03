@@ -351,8 +351,11 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
           </div>
 
           <div
-            className="classification-card fully-recovered"
-            title="Systems that successfully recovered to healthy state"
+            className="classification-card fully-recovered clickable"
+            onClick={() => navigate(`/analytics/fully-recovered?days=${selectedPeriod}${selectedEnvironment ? `&env=${selectedEnvironment}` : ''}`)}
+            role="button"
+            tabIndex={0}
+            title="Click to view systems that recovered within this period"
           >
             <div className="classification-header">
               <span className="classification-icon">✅</span>
@@ -360,7 +363,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
             </div>
             <div className="classification-count">{recoverySummary?.fullyRecovered || 0}</div>
             <div className="classification-description">
-              Successfully recovered to healthy state
+              Recovered to fully healthy in last {selectedPeriod} days
             </div>
           </div>
 

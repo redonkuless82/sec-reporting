@@ -836,6 +836,19 @@ export class StabilityScoringService {
         if (metric &&
             metric.recoveryStatus !== 'NOT_APPLICABLE' &&
             metric.currentHealthStatus !== 'inactive') {
+          
+          // For FULLY_RECOVERED, only include if recovery completed within the reporting period
+          if (metric.recoveryStatus === 'FULLY_RECOVERED') {
+            // Check if the system became fully healthy within the reporting period
+            const recoveryCompletionWithinPeriod = metric.lastHealthChange &&
+              metric.currentHealthStatus === 'fully' &&
+              metric.recoveryDays !== null &&
+              metric.recoveryDays <= days;
+            
+            if (!recoveryCompletionWithinPeriod) {
+              continue; // Skip this system - recovered too long ago
+            }
+          }
           const recoveryAnalysis = this.determineRecoveryStatus(
             metric.currentHealthStatus,
             metric.previousHealthStatus,
