@@ -641,7 +641,7 @@ export class StabilityScoringService {
     if (recoveryAnalysis.status !== 'NOT_APPLICABLE' && lastHealthChange && snapshots.length > 1) {
       // Find snapshot closest to recovery start date
       let recoveryStartSnapshot = snapshots[0];
-      const recoveryStartTime = lastHealthChange.getTime();
+      const recoveryStartTime = new Date(lastHealthChange).getTime();
       const firstSnapshotTime = new Date(snapshots[0].importDate).getTime();
       let minDiff = Math.abs(firstSnapshotTime - recoveryStartTime);
       
