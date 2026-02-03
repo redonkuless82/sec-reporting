@@ -231,6 +231,18 @@ export const analyticsApi = {
     const response = await api.get(`/analytics/tooling-combinations?${params.toString()}`);
     return response.data;
   },
+
+  // Export missing tool systems as CSV
+  exportMissingToolSystems: async (missingTools: string[], env?: string): Promise<Blob> => {
+    const params = new URLSearchParams();
+    params.append('tools', missingTools.join(','));
+    if (env) params.append('env', env);
+    
+    const response = await api.get(`/analytics/missing-tool-systems/export?${params.toString()}`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
 };
 
 export default api;

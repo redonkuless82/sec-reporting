@@ -16,6 +16,9 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(days);
+  const [selectedCombo, setSelectedCombo] = useState<{ missingTools: string[]; systems: string[] } | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const navigate = useNavigate();
 
   // Use global environment context
@@ -178,6 +181,47 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handleComboClick = (combo: any) => {
+    setSelectedCombo({
+      missingTools: combo.missingTools,
+      systems: combo.systems,
+    });
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedCombo(null);
+  };
+
+  const handleExportCsv = async () => {
+    if (!selectedCombo) return;
+
+    setExportingCsv(true);
+    try {
+      const blob = await analyticsApi.exportMissingToolSystems(
+        selectedCombo.missingTools,
+        selectedEnvironment || undefined
+      );
+
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `missing-${selectedCombo.missingTools.join('-').replace(/\s+/g, '')}-${new Date().toISOString().split('T')[0]}.csv`;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      alert('Failed to export CSV. Please try again.');
+    } finally {
+      setExportingCsv(false);
+    }
   };
 
   if (loading) {
@@ -604,10 +648,23 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
           </div>
 
           <div className="combinations-breakdown">
-            <h4>Missing Tool Combinations</h4>
+            <h4>Missing Tool Combinations (Click to view systems)</h4>
             <div className="combinations-list">
               {toolingCombinations.combinations.slice(0, 10).map((combo: any, index: number) => (
-                <div key={index} className="combination-card">
+                <div
+                  key={index}
+                  className="combination-card clickable"
+                  onClick={() => handleComboClick(combo)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleComboClick(combo);
+                    }
+                  }}
+                  title="Click to view affected systems and export CSV"
+                >
                   <div className="combination-header">
                     <div className="combination-tools">
                       {combo.missingTools.map((tool: string, idx: number) => (
@@ -632,32 +689,9 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
                       Fixing these systems would improve overall tooling health by <strong>{combo.potentialHealthIncrease}%</strong>
                     </div>
                   </div>
-                  {combo.systems.length > 0 && (
-                    <details className="combination-systems">
-                      <summary>View affected systems ({combo.systems.length})</summary>
-                      <div className="systems-grid">
-                        {combo.systems.slice(0, 20).map((system: string, sIdx: number) => (
-                          <span
-                            key={sIdx}
-                            className="system-tag clickable"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSystemClick(system);
-                            }}
-                            role="button"
-                            tabIndex={0}
-                          >
-                            {system}
-                          </span>
-                        ))}
-                        {combo.systems.length > 20 && (
-                          <span className="system-tag more">
-                            +{combo.systems.length - 20} more
-                          </span>
-                        )}
-                      </div>
-                    </details>
-                  )}
+                  <div className="combination-footer">
+                    <span className="click-hint">👆 Click to view all {combo.systems.length} affected systems and export CSV</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -781,6 +815,68 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
           </div>
         </div>
       </div>
+
+      {/* Modal for viewing affected systems */}
+      {showModal && selectedCombo && (
+        <div className="modal-overlay" onClick={handleCloseModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Systems Missing: {selectedCombo.missingTools.join(' + ')}</h3>
+              <button className="modal-close" onClick={handleCloseModal} aria-label="Close">
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="modal-stats">
+                <div className="modal-stat">
+                  <span className="modal-stat-label">Total Systems:</span>
+                  <span className="modal-stat-value">{selectedCombo.systems.length}</span>
+                </div>
+                <div className="modal-stat">
+                  <span className="modal-stat-label">Missing Tools:</span>
+                  <span className="modal-stat-value">{selectedCombo.missingTools.join(', ')}</span>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button
+                  className="export-csv-btn"
+                  onClick={handleExportCsv}
+                  disabled={exportingCsv}
+                >
+                  {exportingCsv ? '⏳ Exporting...' : '📥 Export to CSV'}
+                </button>
+              </div>
+              <div className="modal-systems-list">
+                <h4>Affected Systems ({selectedCombo.systems.length})</h4>
+                <div className="systems-grid-modal">
+                  {selectedCombo.systems.map((system: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="system-tag clickable"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSystemClick(system);
+                        handleCloseModal();
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSystemClick(system);
+                          handleCloseModal();
+                        }
+                      }}
+                    >
+                      {system}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

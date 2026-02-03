@@ -780,6 +780,16 @@
   transition: all 0.3s ease;
 }
 
+.combination-card.clickable {
+  cursor: pointer;
+}
+
+.combination-card.clickable:hover {
+  border-color: var(--accent-primary, #58a6ff);
+  box-shadow: 0 6px 20px rgba(88, 166, 255, 0.4);
+  transform: translateY(-4px);
+}
+
 .combination-card:hover {
   border-color: var(--accent-primary, #58a6ff);
   box-shadow: 0 4px 16px rgba(88, 166, 255, 0.2);
@@ -872,6 +882,20 @@
   font-weight: 700;
 }
 
+.combination-footer {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #30363d);
+  text-align: center;
+}
+
+.combination-footer .click-hint {
+  font-size: 0.85rem;
+  color: var(--accent-primary, #58a6ff);
+  font-weight: 600;
+  font-style: italic;
+}
+
 .combination-systems {
   margin-top: 1rem;
   padding-top: 1rem;
@@ -942,6 +966,238 @@
   font-style: italic;
 }
 
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-content {
+  background: var(--bg-secondary, #161b22);
+  border-radius: 12px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 2px solid var(--accent-primary, #58a6ff);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 2px solid var(--border-color, #30363d);
+  background: var(--bg-tertiary, #21262d);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.3rem;
+  color: var(--text-primary, #f0f6fc);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.8rem;
+  color: var(--text-muted, #8b949e);
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: rgba(248, 81, 73, 0.2);
+  color: var(--accent-danger, #f85149);
+}
+
+.modal-body {
+  padding: 2rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color, #30363d);
+}
+
+.modal-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.modal-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted, #8b949e);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.modal-stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent-secondary, #79c0ff);
+  font-family: 'Courier New', monospace;
+}
+
+.modal-actions {
+  margin-bottom: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.export-csv-btn {
+  background: var(--accent-success, #3fb950);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(63, 185, 80, 0.3);
+}
+
+.export-csv-btn:hover:not(:disabled) {
+  background: #2ea043;
+  box-shadow: 0 4px 16px rgba(63, 185, 80, 0.5);
+  transform: translateY(-2px);
+}
+
+.export-csv-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.export-csv-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.modal-systems-list h4 {
+  font-size: 1rem;
+  color: var(--text-primary, #f0f6fc);
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.systems-grid-modal {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 1rem;
+  background: var(--bg-tertiary, #21262d);
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #30363d);
+}
+
+.systems-grid-modal .system-tag {
+  background: var(--bg-elevated, #2d333b);
+  color: var(--card-text-primary, #ffffff);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-family: 'Courier New', monospace;
+  border: 1px solid var(--border-color, #30363d);
+  font-weight: 600;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.systems-grid-modal .system-tag.clickable {
+  cursor: pointer;
+}
+
+.systems-grid-modal .system-tag.clickable:hover {
+  border-color: var(--accent-primary, #58a6ff);
+  background: var(--bg-secondary, #161b22);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+  color: var(--accent-secondary, #79c0ff);
+}
+
+/* Scrollbar styling for modal */
+.modal-body::-webkit-scrollbar,
+.systems-grid-modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-body::-webkit-scrollbar-track,
+.systems-grid-modal::-webkit-scrollbar-track {
+  background: var(--bg-tertiary, #21262d);
+  border-radius: 4px;
+}
+
+.modal-body::-webkit-scrollbar-thumb,
+.systems-grid-modal::-webkit-scrollbar-thumb {
+  background: var(--accent-primary, #58a6ff);
+  border-radius: 4px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover,
+.systems-grid-modal::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-secondary, #79c0ff);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .classification-grid {
@@ -977,5 +1233,27 @@
   .combination-stats {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .modal-content {
+    max-height: 95vh;
+    margin: 1rem;
+  }
+
+  .modal-header {
+    padding: 1rem 1.5rem;
+  }
+
+  .modal-header h3 {
+    font-size: 1rem;
+  }
+
+  .modal-body {
+    padding: 1.5rem;
+  }
+
+  .systems-grid-modal {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.5rem;
   }
 }

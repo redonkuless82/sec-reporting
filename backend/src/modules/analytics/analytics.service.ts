@@ -660,4 +660,106 @@ export class AnalyticsService {
 
     return recommendations;
   }
+
+  /**
+   * Export systems missing specific tools as CSV
+   */
+  async exportMissingToolSystemsCSV(missingTools: string[], env?: string): Promise<string> {
+    this.logger.log(`Exporting systems missing tools: ${missingTools.join(', ')}${env ? ` for ${env}` : ''}`);
+
+    // Get latest snapshot date
+    const latestDateResult = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' })
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' })
+      .getRawOne();
+
+    if (!latestDateResult?.maxDate) {
+      return 'Shortname\nNo data available';
+    }
+
+    const latestDate = new Date(latestDateResult.maxDate);
+
+    // Get all systems from latest snapshot that are unhealthy or partially healthy
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('DATE(snapshot.importDate) = DATE(:latestDate)', { latestDate })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' })
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' })
+      .andWhere('snapshot.itFound = 1') // Only active systems
+      .andWhere('(snapshot.itLagDays IS NULL OR snapshot.itLagDays <= 15)'); // Not inactive
+
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+
+    const snapshots = await queryBuilder.getMany();
+
+    // Filter systems that match the missing tools criteria
+    const HEALTH_GRACE_PERIOD_DAYS = 3;
+    const matchingSystems: Array<{ shortname: string; env: string | null; fullname: string | null }> = [];
+
+    for (const snapshot of snapshots) {
+      const systemMissingTools: string[] = [];
+      
+      // Check which tools are missing (not found and not within grace period)
+      if (!(snapshot.r7Found === 1 || (snapshot.r7LagDays !== null && snapshot.r7LagDays <= HEALTH_GRACE_PERIOD_DAYS))) {
+        systemMissingTools.push('Rapid7');
+      }
+      if (!(snapshot.amFound === 1 || (snapshot.amLagDays !== null && snapshot.amLagDays <= HEALTH_GRACE_PERIOD_DAYS))) {
+        systemMissingTools.push('Automox');
+      }
+      if (!(snapshot.dfFound === 1 || (snapshot.dfLagDays !== null && snapshot.dfLagDays <= HEALTH_GRACE_PERIOD_DAYS))) {
+        systemMissingTools.push('Defender');
+      }
+
+      // Check if this system's missing tools match the requested missing tools
+      const sortedSystemMissing = systemMissingTools.sort().join('+');
+      const sortedRequestedMissing = missingTools.sort().join('+');
+
+      if (sortedSystemMissing === sortedRequestedMissing) {
+        matchingSystems.push({
+          shortname: snapshot.shortname,
+          env: snapshot.env,
+          fullname: snapshot.fullname,
+        });
+      }
+    }
+
+    // Sort by shortname
+    matchingSystems.sort((a, b) => a.shortname.localeCompare(b.shortname));
+
+    // Build CSV
+    let csv = 'Shortname,Environment,Fullname,Missing Tools\n';
+    const missingToolsStr = missingTools.join(' + ');
+    
+    for (const system of matchingSystems) {
+      const shortname = this.escapeCsvValue(system.shortname);
+      const envValue = this.escapeCsvValue(system.env || 'N/A');
+      const fullname = this.escapeCsvValue(system.fullname || 'N/A');
+      csv += `${shortname},${envValue},${fullname},${missingToolsStr}\n`;
+    }
+
+    return csv;
+  }
+
+  /**
+   * Escape CSV values (handle commas, quotes, newlines)
+   */
+  private escapeCsvValue(value: string): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    
+    const stringValue = String(value);
+    
+    // If value contains comma, quote, or newline, wrap in quotes and escape internal quotes
+    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+      return `"${stringValue.replace(/"/g, '""')}"`;
+    }
+    
+    return stringValue;
+  }
 }

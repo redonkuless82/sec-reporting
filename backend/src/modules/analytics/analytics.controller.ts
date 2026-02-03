@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Query, Logger } from '@nestjs/common';
+import { Controller, Get, Param, Query, Logger, Res, HttpStatus } from '@nestjs/common';
+import { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import {
   StabilityOverviewResponseDto,
@@ -108,5 +109,41 @@ export class AnalyticsController {
     const daysNum = days ? parseInt(days, 10) : 30;
     this.logger.log(`GET /analytics/system-insights/${shortname} - days: ${daysNum}`);
     return this.analyticsService.getSystemInsights(shortname, daysNum);
+  }
+
+  /**
+   * GET /api/analytics/missing-tool-systems/export
+   * Export systems missing specific tools as CSV
+   */
+  @Get('missing-tool-systems/export')
+  async exportMissingToolSystems(
+    @Query('tools') tools: string,
+    @Query('env') env: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    this.logger.log(`GET /analytics/missing-tool-systems/export - tools: ${tools}, env: ${env || 'all'}`);
+    
+    if (!tools) {
+      res.status(HttpStatus.BAD_REQUEST).json({
+        message: 'Missing required parameter: tools'
+      });
+      return;
+    }
+
+    try {
+      const missingTools = tools.split(',').map(t => t.trim());
+      const csv = await this.analyticsService.exportMissingToolSystemsCSV(missingTools, env);
+      
+      // Set headers for CSV download
+      const filename = `missing-tools-${missingTools.join('-').replace(/\s+/g, '')}-${new Date().toISOString().split('T')[0]}.csv`;
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.status(HttpStatus.OK).send(csv);
+    } catch (error) {
+      this.logger.error(`Error exporting missing tool systems: ${error.message}`);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        message: 'Failed to export systems'
+      });
+    }
   }
 }
