@@ -638,6 +638,7 @@ export class StabilityScoringService {
     
     // Calculate which tools recovered (if in recovery)
     let toolsRecovered = undefined;
+    let hasToolProgress = false;
     if (recoveryAnalysis.status !== 'NOT_APPLICABLE' && lastHealthChange && snapshots.length > 1) {
       // Find snapshot closest to recovery start date
       let recoveryStartSnapshot = snapshots[0];
@@ -661,13 +662,31 @@ export class StabilityScoringService {
         defender: Boolean(currentSnapshot.dfFound) && !Boolean(recoveryStartSnapshot.dfFound),
         intune: Boolean(currentSnapshot.itFound) && !Boolean(recoveryStartSnapshot.itFound),
       };
+      
+      // Check if any tools actually recovered
+      hasToolProgress = toolsRecovered.r7 || toolsRecovered.automox || toolsRecovered.defender || toolsRecovered.intune;
+    }
+    
+    // Override classification: RECOVERING only if tools actually recovered AND system is PARTIALLY healthy
+    let finalClassification = classification;
+    if (classification === 'RECOVERING') {
+      if (!hasToolProgress || currentHealth !== 'partially') {
+        // No tool progress or not partially healthy - reclassify based on current state
+        if (currentHealth === 'fully') {
+          finalClassification = 'STABLE_HEALTHY';
+        } else if (currentHealth === 'partially') {
+          finalClassification = 'STABLE_UNHEALTHY'; // Partially but no progress = stable unhealthy
+        } else {
+          finalClassification = 'STABLE_UNHEALTHY';
+        }
+      }
     }
     
     return {
       shortname,
       env: currentSnapshot?.env || null,
       stabilityScore,
-      classification,
+      classification: finalClassification,
       healthChangeCount,
       consecutiveDaysStable,
       daysTracked: healthHistory.length,
