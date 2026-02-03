@@ -484,7 +484,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
               <div className="gap-label">Investigate Gaps</div>
               <div className="gap-value warning">{r7GapSummary.investigateGaps}</div>
               <div className="gap-description">
-                R7 missing but other tools present - possible configuration issue
+                R7 missing but other tools (Automox/Defender) present - possible R7 agent issue
               </div>
             </div>
             <div className="gap-stat">
@@ -497,7 +497,8 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
           </div>
           <div className="gap-explanation">
             <strong>Understanding R7 Behavior:</strong> Rapid7 automatically removes systems that haven't checked in for 15+ days.
-            This is expected for systems that are temporarily offline or inactive. Only investigate gaps where other tools are still reporting.
+            This is expected for systems that are temporarily offline or inactive. "Investigate Gaps" only counts systems where R7 is missing
+            but other tools (Automox/Defender) are still present, indicating a potential R7 agent issue rather than a system being offline.
           </div>
         </div>
       )}
