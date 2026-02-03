@@ -636,6 +636,30 @@ export class StabilityScoringService {
     // Get current tool status from latest snapshot
     const currentSnapshot = snapshots[snapshots.length - 1];
     
+    // Calculate which tools recovered (if in recovery)
+    let toolsRecovered = undefined;
+    if (recoveryAnalysis.status !== 'NOT_APPLICABLE' && lastHealthChange && snapshots.length > 1) {
+      // Find snapshot closest to recovery start date
+      let recoveryStartSnapshot = snapshots[0];
+      let minDiff = Math.abs(snapshots[0].importDate.getTime() - lastHealthChange.getTime());
+      
+      for (const snapshot of snapshots) {
+        const diff = Math.abs(snapshot.importDate.getTime() - lastHealthChange.getTime());
+        if (diff < minDiff) {
+          minDiff = diff;
+          recoveryStartSnapshot = snapshot;
+        }
+      }
+      
+      // Compare tools at recovery start vs now
+      toolsRecovered = {
+        r7: Boolean(currentSnapshot.r7Found) && !Boolean(recoveryStartSnapshot.r7Found),
+        automox: Boolean(currentSnapshot.amFound) && !Boolean(recoveryStartSnapshot.amFound),
+        defender: Boolean(currentSnapshot.dfFound) && !Boolean(recoveryStartSnapshot.dfFound),
+        intune: Boolean(currentSnapshot.itFound) && !Boolean(recoveryStartSnapshot.itFound),
+      };
+    }
+    
     return {
       shortname,
       env: currentSnapshot?.env || null,
@@ -658,6 +682,7 @@ export class StabilityScoringService {
       recoveryDays: daysSinceChange,
       isActionable,
       actionReason,
+      toolsRecovered,
     };
   }
 
@@ -785,10 +810,9 @@ export class StabilityScoringService {
       const systemSnapshots = snapshotsBySystem.get(shortname) || [];
       if (systemSnapshots.length > 0) {
         const metric = this.analyzeSystemStabilityFromSnapshots(shortname, systemSnapshots, endDate);
-        // Only include systems that are actively recovering or stuck - exclude FULLY_RECOVERED, NOT_APPLICABLE, and INACTIVE
+        // Include all systems in recovery (including FULLY_RECOVERED), exclude only NOT_APPLICABLE and INACTIVE
         if (metric &&
             metric.recoveryStatus !== 'NOT_APPLICABLE' &&
-            metric.recoveryStatus !== 'FULLY_RECOVERED' &&
             metric.currentHealthStatus !== 'inactive') {
           const recoveryAnalysis = this.determineRecoveryStatus(
             metric.currentHealthStatus,
@@ -796,16 +820,33 @@ export class StabilityScoringService {
             metric.recoveryDays,
           );
 
-          // Determine which tools recovered by comparing current vs previous snapshots
+          // Determine which tools recovered by looking at recovery period
+          // Compare tools at recovery start vs current state
           const latestSnapshot = systemSnapshots[systemSnapshots.length - 1];
-          const previousSnapshot = systemSnapshots.length > 1 ? systemSnapshots[systemSnapshots.length - 2] : null;
+          let toolsRecovered = undefined;
           
-          const toolsRecovered = previousSnapshot ? {
-            r7: (latestSnapshot.r7Found === 1) && (previousSnapshot.r7Found !== 1),
-            automox: (latestSnapshot.amFound === 1) && (previousSnapshot.amFound !== 1),
-            defender: (latestSnapshot.dfFound === 1) && (previousSnapshot.dfFound !== 1),
-            intune: (latestSnapshot.itFound === 1) && (previousSnapshot.itFound !== 1),
-          } : undefined;
+          if (metric.lastHealthChange && systemSnapshots.length > 1) {
+            // Find snapshot closest to recovery start date
+            const recoveryStartDate = new Date(metric.lastHealthChange);
+            let recoveryStartSnapshot = systemSnapshots[0];
+            let minDiff = Math.abs(systemSnapshots[0].importDate.getTime() - recoveryStartDate.getTime());
+            
+            for (const snapshot of systemSnapshots) {
+              const diff = Math.abs(snapshot.importDate.getTime() - recoveryStartDate.getTime());
+              if (diff < minDiff) {
+                minDiff = diff;
+                recoveryStartSnapshot = snapshot;
+              }
+            }
+            
+            // Compare tools at recovery start vs now
+            toolsRecovered = {
+              r7: (latestSnapshot.r7Found === 1) && (recoveryStartSnapshot.r7Found !== 1),
+              automox: (latestSnapshot.amFound === 1) && (recoveryStartSnapshot.amFound !== 1),
+              defender: (latestSnapshot.dfFound === 1) && (recoveryStartSnapshot.dfFound !== 1),
+              intune: (latestSnapshot.itFound === 1) && (recoveryStartSnapshot.itFound !== 1),
+            };
+          }
 
           trackings.push({
             shortname: shortname,

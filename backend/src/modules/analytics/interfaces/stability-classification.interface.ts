@@ -53,6 +53,13 @@ export interface SystemStabilityMetrics {
   recoveryDays: number | null;               // Days since started recovering
   isActionable: boolean;                     // True if needs investigation
   actionReason: string | null;               // Why action is needed
+  // Tool recovery tracking
+  toolsRecovered?: {
+    r7: boolean;
+    automox: boolean;
+    defender: boolean;
+    intune: boolean;
+  };
 }
 
 /**
