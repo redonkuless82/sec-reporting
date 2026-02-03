@@ -136,7 +136,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
       reportContent += `Stuck Recovery: ${recoverySummary.stuckRecovery}\n`;
       reportContent += `  (Systems taking longer than expected > 3 days - may need intervention)\n`;
       reportContent += `Fully Recovered: ${recoverySummary.fullyRecovered}\n`;
-      reportContent += `  (Systems that successfully recovered to healthy state)\n`;
+      reportContent += `  (Systems that became fully healthy with all tools reporting)\n`;
       reportContent += `Average Recovery Time: ${recoverySummary.averageRecoveryTime} days\n\n`;
     }
 
@@ -355,7 +355,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
             onClick={() => navigate(`/analytics/fully-recovered?days=${selectedPeriod}${selectedEnvironment ? `&env=${selectedEnvironment}` : ''}`)}
             role="button"
             tabIndex={0}
-            title="Click to view systems that recovered within this period"
+            title="Click to view systems that became fully healthy within this period"
           >
             <div className="classification-header">
               <span className="classification-icon">✅</span>
@@ -363,7 +363,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
             </div>
             <div className="classification-count">{recoverySummary?.fullyRecovered || 0}</div>
             <div className="classification-description">
-              Recovered to fully healthy in last {selectedPeriod} days
+              Became fully healthy (all tools) in last {selectedPeriod} days
             </div>
           </div>
 
@@ -496,7 +496,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
             </div>
           </div>
           <div className="gap-explanation">
-            <strong>Understanding R7 Behavior:</strong> Rapid7 automatically removes systems that haven't checked in for 7+ days. 
+            <strong>Understanding R7 Behavior:</strong> Rapid7 automatically removes systems that haven't checked in for 15+ days.
             This is expected for systems that are temporarily offline or inactive. Only investigate gaps where other tools are still reporting.
           </div>
         </div>
@@ -533,7 +533,7 @@ export default function AnalyticsDashboard({ days = 30, onSystemClick }: Analyti
               <div className="recovery-label">Fully Recovered</div>
               <div className="recovery-value success">{recoverySummary.fullyRecovered}</div>
               <div className="recovery-description">
-                Systems that successfully recovered to healthy state
+                Systems that became fully healthy (all tools reporting)
               </div>
             </div>
             <div className="recovery-stat">

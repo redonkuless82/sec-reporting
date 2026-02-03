@@ -63,7 +63,7 @@ export default function FullyRecoveredPage() {
           <div className="header-info">
             <h1>✅ Fully Recovered Systems</h1>
             <p className="page-subtitle">
-              Systems that successfully recovered to fully healthy state within the reporting period
+              Systems that became fully healthy (all 3 tools reporting) within the reporting period
             </p>
             <p className="page-meta">
               Analyzing {days} days{environment && ` • Environment: ${environment}`}
@@ -140,27 +140,29 @@ export default function FullyRecoveredPage() {
                           </span>
                         </td>
                         <td>
-                          {system.toolsRecovered && (
+                          {system.toolsRecovered ? (
                             <div className="tools-recovered-badges">
                               {system.toolsRecovered.r7 && (
-                                <span className="tool-recovered-badge">✅ R7</span>
+                                <span className="tool-recovered-badge" title="Rapid7 came back online">✅ R7</span>
                               )}
                               {system.toolsRecovered.automox && (
-                                <span className="tool-recovered-badge">✅ Automox</span>
+                                <span className="tool-recovered-badge" title="Automox came back online">✅ Automox</span>
                               )}
                               {system.toolsRecovered.defender && (
-                                <span className="tool-recovered-badge">✅ Defender</span>
+                                <span className="tool-recovered-badge" title="Defender came back online">✅ Defender</span>
                               )}
                               {system.toolsRecovered.intune && (
-                                <span className="tool-recovered-badge">✅ Intune</span>
+                                <span className="tool-recovered-badge" title="Intune came back online">✅ Intune</span>
                               )}
                               {!system.toolsRecovered.r7 &&
                                 !system.toolsRecovered.automox &&
                                 !system.toolsRecovered.defender &&
                                 !system.toolsRecovered.intune && (
-                                  <span className="no-tools-recovered">No new tools</span>
+                                  <span className="no-tools-recovered" title="System was already partially healthy, remaining tools came online">All tools healthy</span>
                                 )}
                             </div>
+                          ) : (
+                            <span className="no-tools-recovered">-</span>
                           )}
                         </td>
                         <td>

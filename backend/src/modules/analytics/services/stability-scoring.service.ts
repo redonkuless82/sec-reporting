@@ -837,16 +837,23 @@ export class StabilityScoringService {
             metric.recoveryStatus !== 'NOT_APPLICABLE' &&
             metric.currentHealthStatus !== 'inactive') {
           
-          // For FULLY_RECOVERED, only include if recovery completed within the reporting period
+          // For FULLY_RECOVERED, only include if:
+          // 1. System is currently FULLY healthy (all 3 tools reporting)
+          // 2. System became fully healthy within the reporting period
+          // 3. System is NOT inactive (already checked above)
           if (metric.recoveryStatus === 'FULLY_RECOVERED') {
+            // Must be currently fully healthy
+            if (metric.currentHealthStatus !== 'fully') {
+              continue; // Skip - not actually fully healthy
+            }
+            
             // Check if the system became fully healthy within the reporting period
             const recoveryCompletionWithinPeriod = metric.lastHealthChange &&
-              metric.currentHealthStatus === 'fully' &&
               metric.recoveryDays !== null &&
               metric.recoveryDays <= days;
             
             if (!recoveryCompletionWithinPeriod) {
-              continue; // Skip this system - recovered too long ago
+              continue; // Skip this system - recovered too long ago or no recovery data
             }
           }
           const recoveryAnalysis = this.determineRecoveryStatus(
@@ -861,23 +868,21 @@ export class StabilityScoringService {
           let toolsRecovered = undefined;
           
           if (metric.lastHealthChange && systemSnapshots.length > 1) {
-            // Find snapshot closest to recovery start date
+            // Find snapshot at or just before recovery start date
             const recoveryStartDate = new Date(metric.lastHealthChange);
             const recoveryStartTime = recoveryStartDate.getTime();
             let recoveryStartSnapshot = systemSnapshots[0];
-            const firstSnapshotTime = new Date(systemSnapshots[0].importDate).getTime();
-            let minDiff = Math.abs(firstSnapshotTime - recoveryStartTime);
             
-            for (const snapshot of systemSnapshots) {
-              const snapshotTime = new Date(snapshot.importDate).getTime();
-              const diff = Math.abs(snapshotTime - recoveryStartTime);
-              if (diff < minDiff) {
-                minDiff = diff;
-                recoveryStartSnapshot = snapshot;
+            // Find the snapshot just before the recovery started (previous unhealthy state)
+            for (let i = systemSnapshots.length - 1; i >= 0; i--) {
+              const snapshotTime = new Date(systemSnapshots[i].importDate).getTime();
+              if (snapshotTime <= recoveryStartTime) {
+                recoveryStartSnapshot = systemSnapshots[i];
+                break;
               }
             }
             
-            // Compare tools at recovery start vs now
+            // Compare tools at recovery start vs now - show which tools came back
             toolsRecovered = {
               r7: (latestSnapshot.r7Found === 1) && (recoveryStartSnapshot.r7Found !== 1),
               automox: (latestSnapshot.amFound === 1) && (recoveryStartSnapshot.amFound !== 1),
