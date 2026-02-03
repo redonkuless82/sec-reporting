@@ -641,10 +641,13 @@ export class StabilityScoringService {
     if (recoveryAnalysis.status !== 'NOT_APPLICABLE' && lastHealthChange && snapshots.length > 1) {
       // Find snapshot closest to recovery start date
       let recoveryStartSnapshot = snapshots[0];
-      let minDiff = Math.abs(snapshots[0].importDate.getTime() - lastHealthChange.getTime());
+      const recoveryStartTime = lastHealthChange.getTime();
+      const firstSnapshotTime = new Date(snapshots[0].importDate).getTime();
+      let minDiff = Math.abs(firstSnapshotTime - recoveryStartTime);
       
       for (const snapshot of snapshots) {
-        const diff = Math.abs(snapshot.importDate.getTime() - lastHealthChange.getTime());
+        const snapshotTime = new Date(snapshot.importDate).getTime();
+        const diff = Math.abs(snapshotTime - recoveryStartTime);
         if (diff < minDiff) {
           minDiff = diff;
           recoveryStartSnapshot = snapshot;
@@ -828,11 +831,14 @@ export class StabilityScoringService {
           if (metric.lastHealthChange && systemSnapshots.length > 1) {
             // Find snapshot closest to recovery start date
             const recoveryStartDate = new Date(metric.lastHealthChange);
+            const recoveryStartTime = recoveryStartDate.getTime();
             let recoveryStartSnapshot = systemSnapshots[0];
-            let minDiff = Math.abs(systemSnapshots[0].importDate.getTime() - recoveryStartDate.getTime());
+            const firstSnapshotTime = new Date(systemSnapshots[0].importDate).getTime();
+            let minDiff = Math.abs(firstSnapshotTime - recoveryStartTime);
             
             for (const snapshot of systemSnapshots) {
-              const diff = Math.abs(snapshot.importDate.getTime() - recoveryStartDate.getTime());
+              const snapshotTime = new Date(snapshot.importDate).getTime();
+              const diff = Math.abs(snapshotTime - recoveryStartTime);
               if (diff < minDiff) {
                 minDiff = diff;
                 recoveryStartSnapshot = snapshot;
