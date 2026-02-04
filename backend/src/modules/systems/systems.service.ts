@@ -1614,6 +1614,7 @@ export class SystemsService {
   /**
    * Get all systems with their tooling status for export
    * Returns systems with shortname, environment, and boolean flags for each tool
+   * Applies same filters as dashboard: excludes fake systems, servers, and non-Windows
    */
   async getAllSystemsWithToolingForExport(env?: string) {
     const today = new Date();
@@ -1622,12 +1623,14 @@ export class SystemsService {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Get all systems from today's snapshot
+    // Get all systems from today's snapshot with same filters as dashboard
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .where('snapshot.importDate >= :today', { today })
       .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)') // Exclude fake systems
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .orderBy('snapshot.shortname', 'ASC');
     
     if (env) {
