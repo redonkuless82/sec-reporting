@@ -1629,8 +1629,7 @@ export class SystemsService {
       .where('snapshot.importDate >= :today', { today })
       .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)') // Exclude fake systems
-      .andWhere('(snapshot.serverOS IS NULL OR snapshot.serverOS = :false OR snapshot.serverOS != :true)',
-        { false: 'FALSE', true: 'TRUE' }) // Only desktops/laptops (exclude servers where serverOS = 'TRUE')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops - matches dashboard filter exactly
       .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .orderBy('snapshot.shortname', 'ASC');
     
