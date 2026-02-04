@@ -1526,3 +1526,32 @@
     color: #999;
   }
 }
+
+/* Tooltip header styles */
+.chart-header-with-tooltip,
+.section-header-with-tooltip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 1rem;
+}
+
+.chart-header-with-tooltip h3,
+.section-header-with-tooltip h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Card label with tooltip */
+.card-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.card-label .info-tooltip-icon {
+  flex-shrink: 0;
+}

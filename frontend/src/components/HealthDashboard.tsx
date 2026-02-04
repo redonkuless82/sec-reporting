@@ -4,6 +4,7 @@ import { useEnvironment } from '../contexts/EnvironmentContext';
 import type { HealthTrendingResponse, HealthTrendDataPoint } from '../types';
 import HealthDrillDownModal from './HealthDrillDownModal';
 import FiveDayActiveDrillDownModal from './FiveDayActiveDrillDownModal';
+import InfoTooltip from './InfoTooltip';
 import './ComplianceDashboard.css';
 
 interface HealthDashboardProps {
@@ -247,7 +248,29 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
         <div className="summary-card">
           <div className="card-icon">📈</div>
           <div className="card-content">
-            <div className="card-label">Total Systems</div>
+            <div className="card-label">
+              Total Systems
+              <InfoTooltip
+                title="Total Systems Count"
+                content={
+                  <div>
+                    <strong>What this shows:</strong> The current total number of systems in the environment.
+                    <br /><br />
+                    <strong>Data Source:</strong> Aggregated from all tool imports (Intune, Rapid7, Automox, Defender).
+                    <br /><br />
+                    <strong>Filtering:</strong>
+                    <ul>
+                      <li>Excludes fake/test systems (names containing 'fake', 'test', 'demo')</li>
+                      <li>Includes all systems regardless of health status</li>
+                      {selectedEnvironment && <li>Filtered by environment: <strong>{selectedEnvironment}</strong></li>}
+                    </ul>
+                    <strong>Comparisons:</strong> Shows day-over-day and week-over-week changes to track system inventory growth or reduction.
+                  </div>
+                }
+                position="right"
+                maxWidth={350}
+              />
+            </div>
             <div className="card-value">{summary.totalSystemsNow}</div>
             {summary.dayOverDay && (
               <div className={`card-comparison ${summary.dayOverDay.systemsChange >= 0 ? 'positive' : 'negative'}`}>
@@ -265,7 +288,34 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
         <div className="summary-card">
           <div className="card-icon">✅</div>
           <div className="card-content">
-            <div className="card-label">Health Rate</div>
+            <div className="card-label">
+              Health Rate
+              <InfoTooltip
+                title="Health Rate Calculation"
+                content={
+                  <div>
+                    <strong>What this shows:</strong> The overall health percentage of active systems based on tool coverage.
+                    <br /><br />
+                    <strong>Calculation Method:</strong> Uses fractional scoring:
+                    <ul>
+                      <li><strong>3/3 tools</strong> = 100% (1.0 point)</li>
+                      <li><strong>2/3 tools</strong> = 66.7% (0.67 points)</li>
+                      <li><strong>1/3 tools</strong> = 33.3% (0.33 points)</li>
+                      <li><strong>0/3 tools</strong> = 0% (0 points)</li>
+                    </ul>
+                    <strong>Formula:</strong> <code>Total Points / Active Systems × 100</code>
+                    <br /><br />
+                    <strong>Active Systems:</strong> Only includes systems seen in Intune within the last 15 days.
+                    <br /><br />
+                    <strong>Tools Counted:</strong> Rapid7, Automox, and Defender.
+                    <br /><br />
+                    <em>Inactive systems (15+ days) are excluded from health rate calculations.</em>
+                  </div>
+                }
+                position="right"
+                maxWidth={380}
+              />
+            </div>
             <div className={`card-value ${summary.healthImprovement >= 0 ? 'positive' : 'negative'}`}>
               {trendData[trendData.length - 1]?.healthRate.toFixed(1)}%
             </div>
@@ -285,7 +335,35 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
         <div className="summary-card">
           <div className="card-icon">🎯</div>
           <div className="card-content">
-            <div className="card-label">Systems Gained Health</div>
+            <div className="card-label">
+              Systems Gained Health
+              <InfoTooltip
+                title="Systems Gained Health"
+                content={
+                  <div>
+                    <strong>What this shows:</strong> Number of systems that improved their health status during the selected period.
+                    <br /><br />
+                    <strong>How it's calculated:</strong>
+                    <ul>
+                      <li>Compares the first day vs. last day of the period</li>
+                      <li>Counts systems with <strong>increased tool coverage</strong></li>
+                      <li>Examples: 0→1 tool, 1→2 tools, 2→3 tools</li>
+                    </ul>
+                    <strong>Excludes:</strong>
+                    <ul>
+                      <li>New systems discovered during the period</li>
+                      <li>Systems that became inactive</li>
+                      <li>Fake/test systems</li>
+                    </ul>
+                    <strong>Period:</strong> Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    <br /><br />
+                    <em>This metric tracks remediation success and tool deployment progress.</em>
+                  </div>
+                }
+                position="right"
+                maxWidth={380}
+              />
+            </div>
             <div className="card-value positive">{summary.systemsGainedHealth}</div>
             <div className="card-description">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
           </div>
@@ -294,7 +372,36 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
         <div className="summary-card">
           <div className="card-icon">⚠️</div>
           <div className="card-content">
-            <div className="card-label">Systems Lost Health</div>
+            <div className="card-label">
+              Systems Lost Health
+              <InfoTooltip
+                title="Systems Lost Health"
+                content={
+                  <div>
+                    <strong>What this shows:</strong> Number of systems that degraded in health status during the selected period.
+                    <br /><br />
+                    <strong>How it's calculated:</strong>
+                    <ul>
+                      <li>Compares the first day vs. last day of the period</li>
+                      <li>Counts systems with <strong>decreased tool coverage</strong></li>
+                      <li>Examples: 3→2 tools, 2→1 tool, 1→0 tools</li>
+                    </ul>
+                    <strong>Common Causes:</strong>
+                    <ul>
+                      <li>Agent uninstalled or stopped reporting</li>
+                      <li>System removed from tool management</li>
+                      <li>Network connectivity issues</li>
+                      <li>System reimaged without tool reinstallation</li>
+                    </ul>
+                    <strong>Period:</strong> Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    <br /><br />
+                    <em>⚠️ These systems require immediate investigation.</em>
+                  </div>
+                }
+                position="right"
+                maxWidth={380}
+              />
+            </div>
             <div className="card-value negative">{summary.systemsLostHealth}</div>
             <div className="card-description">Since {new Date(data.dateRange.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
           </div>
@@ -335,6 +442,37 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
 
       {/* Main Chart */}
       <div className="chart-container">
+        <div className="chart-header-with-tooltip">
+          <h3>📊 Health Trending Over Time</h3>
+          <InfoTooltip
+            title="Health Trending Graph Explanation"
+            content={
+              <div>
+                <strong>What this graph shows:</strong>
+                <br />
+                This stacked area chart visualizes system health distribution over time, with a blue line overlay showing the overall health rate percentage.
+                <br /><br />
+                <strong>Graph Components:</strong>
+                <ul>
+                  <li><strong style={{color: '#4CAF50'}}>Green Area:</strong> Fully Healthy systems (all 3 tools reporting)</li>
+                  <li><strong style={{color: '#FFC107'}}>Yellow Area:</strong> Partially Healthy systems (1-2 tools reporting)</li>
+                  <li><strong style={{color: '#F44336'}}>Red Area:</strong> Unhealthy systems (0 tools reporting, but active in Intune)</li>
+                  <li><strong style={{color: '#9E9E9E'}}>Gray Area:</strong> Inactive systems (not in Intune for 15+ days)</li>
+                  <li><strong style={{color: '#2196F3'}}>Blue Line:</strong> Overall health rate percentage</li>
+                </ul>
+                <strong>Data Points:</strong> Each point represents a daily snapshot. Hover over points to see detailed breakdowns.
+                <br /><br />
+                <strong>Y-Axis:</strong> Number of systems (left) and health percentage (right, implied by blue line scale 0-100%).
+                <br /><br />
+                <strong>X-Axis:</strong> Date range based on selected period (7, 14, 30, 60, or 90 days).
+                <br /><br />
+                <em>The stacked areas show the total system count composition at each point in time.</em>
+              </div>
+            }
+            position="bottom"
+            maxWidth={450}
+          />
+        </div>
         <svg width={chartWidth} height={chartHeight} className="compliance-chart">
           <g transform={`translate(${padding.left},${padding.top})`}>
             {/* Grid lines */}
@@ -704,7 +842,36 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
       {/* Tool Trending Section */}
       {summary.toolTrends && (
         <div className="tool-trending-section">
-          <h3>🔧 Tool Adoption Trends</h3>
+          <div className="section-header-with-tooltip">
+            <h3>🔧 Tool Adoption Trends</h3>
+            <InfoTooltip
+              title="Tool Adoption Trends Explanation"
+              content={
+                <div>
+                  <strong>What this shows:</strong> Individual tool adoption progress over the selected time period.
+                  <br /><br />
+                  <strong>How it's calculated:</strong>
+                  <ul>
+                    <li>Compares the <strong>first day</strong> vs. <strong>last day</strong> of the period</li>
+                    <li>Shows absolute change (number of systems) and percentage change</li>
+                    <li>Trend indicators: ↑ (up), ↓ (down), → (stable)</li>
+                  </ul>
+                  <strong>What counts as "reporting":</strong>
+                  <ul>
+                    <li><strong>Rapid7:</strong> System has a record in Rapid7 imports</li>
+                    <li><strong>Automox:</strong> System has a record in Automox imports</li>
+                    <li><strong>Defender:</strong> System has a record in Defender imports</li>
+                    <li><strong>Intune:</strong> System seen in Intune within last 15 days</li>
+                  </ul>
+                  <strong>Use Case:</strong> Track individual tool deployment success and identify which tools need attention.
+                  <br /><br />
+                  <em>A system can report to multiple tools simultaneously.</em>
+                </div>
+              }
+              position="bottom"
+              maxWidth={420}
+            />
+          </div>
           <div className="tool-trends-grid">
             <div className="tool-trend-card">
               <div className="tool-trend-header">
@@ -776,7 +943,36 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
       {/* 5-Day Consecutive Active Systems Section */}
       {summary.fiveDayActive && summary.fiveDayActive.metrics.totalSystems > 0 && (
         <div className="five-day-active-section">
-          <h3>🔥 5-Day Consecutive Active Systems</h3>
+          <div className="section-header-with-tooltip">
+            <h3>🔥 5-Day Consecutive Active Systems</h3>
+            <InfoTooltip
+              title="5-Day Consecutive Active Systems"
+              content={
+                <div>
+                  <strong>What this shows:</strong> A focused view of systems that have been consistently active for 5 consecutive days.
+                  <br /><br />
+                  <strong>Qualification Criteria:</strong>
+                  <ul>
+                    <li>System must be <strong>active in Intune</strong> (within 15 days) for each of the last 5 days</li>
+                    <li>No gaps in activity allowed - must be consecutive</li>
+                    <li>Excludes fake/test systems</li>
+                  </ul>
+                  <strong>Why this matters:</strong>
+                  <ul>
+                    <li>Identifies <strong>stable, reliable systems</strong> that are consistently online</li>
+                    <li>These systems should have the <strong>highest tool coverage</strong></li>
+                    <li>Helps identify which consistently-online systems still lack tooling</li>
+                    <li>Useful for targeting remediation efforts on stable infrastructure</li>
+                  </ul>
+                  <strong>Health Metrics:</strong> Shows the same health categories (Fully/Partially/Unhealthy) but only for this stable subset.
+                  <br /><br />
+                  <em>Click any card to see the detailed drill-down of these systems.</em>
+                </div>
+              }
+              position="bottom"
+              maxWidth={450}
+            />
+          </div>
           <p className="section-description">
             Systems that have been continuously active (in Intune within 15 days) for the last 5 days straight
           </p>
