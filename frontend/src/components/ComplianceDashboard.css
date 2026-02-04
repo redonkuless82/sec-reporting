@@ -43,6 +43,16 @@
   color: white;
 }
 
+.export-button.all-systems {
+  border-color: #2196F3;
+  color: #2196F3;
+}
+
+.export-button.all-systems:hover {
+  background: #2196F3;
+  color: white;
+}
+
 /* Comparison indicators */
 .card-comparison {
   font-size: 0.85rem;

@@ -1610,4 +1610,42 @@ export class SystemsService {
       date: today,
     };
   }
+
+  /**
+   * Get all systems with their tooling status for export
+   * Returns systems with shortname, environment, and boolean flags for each tool
+   */
+  async getAllSystemsWithToolingForExport(env?: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Get all systems from today's snapshot
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.importDate >= :today', { today })
+      .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .orderBy('snapshot.shortname', 'ASC');
+    
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+    
+    const snapshots = await queryBuilder.getMany();
+
+    // Map to export format with tooling status
+    return snapshots.map(snapshot => ({
+      shortname: snapshot.shortname,
+      environment: snapshot.env || 'Unknown',
+      rapid7: snapshot.r7Found === 1 || (snapshot.r7LagDays !== null && snapshot.r7LagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
+      automox: snapshot.amFound === 1 || (snapshot.amLagDays !== null && snapshot.amLagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
+      defender: snapshot.dfFound === 1 || (snapshot.dfLagDays !== null && snapshot.dfLagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
+      intune: snapshot.itLagDays !== null && snapshot.itLagDays <= this.INTUNE_INACTIVE_DAYS,
+      isActive: this.isSystemActive(snapshot, today),
+      healthStatus: this.calculateSystemHealth(snapshot, today),
+    }));
+  }
 }

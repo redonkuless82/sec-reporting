@@ -94,6 +94,12 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
     window.open(url, '_blank');
   };
 
+  const handleExportAllSystemsTooling = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || '/api';
+    const url = `${apiUrl}/systems/export/all-systems-tooling${selectedEnvironment ? `?env=${selectedEnvironment}` : ''}`;
+    window.open(url, '_blank');
+  };
+
   if (loading) {
     return (
       <div className="compliance-dashboard loading">
@@ -206,6 +212,13 @@ export default function HealthDashboard({ days = 30 }: HealthDashboardProps) {
               title="Export unhealthy systems as CSV"
             >
               📥 Export Unhealthy
+            </button>
+            <button
+              className="export-button all-systems"
+              onClick={handleExportAllSystemsTooling}
+              title="Export all systems with tooling status as CSV"
+            >
+              📥 Export All Systems
             </button>
           </div>
           <div className="period-selector">

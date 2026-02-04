@@ -134,4 +134,31 @@ export class SystemsController {
     res.setHeader('Content-Disposition', `attachment; filename="unhealthy-systems${env ? `-${env}` : ''}.csv"`);
     res.send(csv);
   }
+
+  @Get('export/all-systems-tooling')
+  async exportAllSystemsWithTooling(
+    @Query('env') env?: string,
+    @Res() res?: Response,
+  ) {
+    const systems = await this.systemsService.getAllSystemsWithToolingForExport(env);
+    
+    // Generate CSV with headers
+    const headers = ['Shortname', 'Environment', 'Rapid7', 'Automox', 'Defender', 'Intune', 'Active', 'Health Status'];
+    const rows = systems.map(s => [
+      s.shortname,
+      s.environment,
+      s.rapid7 ? 'TRUE' : 'FALSE',
+      s.automox ? 'TRUE' : 'FALSE',
+      s.defender ? 'TRUE' : 'FALSE',
+      s.intune ? 'TRUE' : 'FALSE',
+      s.isActive ? 'TRUE' : 'FALSE',
+      s.healthStatus.toUpperCase(),
+    ].join(','));
+    
+    const csv = [headers.join(','), ...rows].join('\n');
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="all-systems-tooling${env ? `-${env}` : ''}.csv"`);
+    res.send(csv);
+  }
 }
