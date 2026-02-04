@@ -1615,21 +1615,32 @@ export class SystemsService {
    * Get all systems with their tooling status for export
    * Returns systems with shortname, environment, and boolean flags for each tool
    * Applies same filters as dashboard: excludes fake systems, servers, and non-Windows
+   * Uses the most recent import date to match dashboard display
    */
   async getAllSystemsWithToolingForExport(env?: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Find the most recent import date (same logic as dashboard)
+    const latestImportQuery = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS IS NULL OR snapshot.serverOS != :true)', { true: 'TRUE' })
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' });
     
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (env) {
+      latestImportQuery.andWhere('snapshot.env = :env', { env });
+    }
+    
+    const latestImportDate = await latestImportQuery.getRawOne();
+    
+    if (!latestImportDate || !latestImportDate.maxDate) {
+      return [];
+    }
 
-    // Get all systems from today's snapshot with same filters as dashboard
+    // Get all systems from the most recent import date - exclude servers explicitly
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
-      .where('snapshot.importDate >= :today', { today })
-      .andWhere('snapshot.importDate < :tomorrow', { tomorrow })
+      .where('snapshot.importDate = :importDate', { importDate: latestImportDate.maxDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)') // Exclude fake systems
-      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops - matches dashboard filter exactly
+      .andWhere('(snapshot.serverOS IS NULL OR snapshot.serverOS != :true)', { true: 'TRUE' }) // Exclude servers (serverOS = 'TRUE')
       .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
       .orderBy('snapshot.shortname', 'ASC');
     
@@ -1639,6 +1650,11 @@ export class SystemsService {
     
     const snapshots = await queryBuilder.getMany();
 
+    // Use the import date as reference for health calculations
+    const referenceDate = latestImportDate.maxDate instanceof Date
+      ? latestImportDate.maxDate
+      : new Date(latestImportDate.maxDate);
+
     // Map to export format with tooling status
     return snapshots.map(snapshot => ({
       shortname: snapshot.shortname,
@@ -1647,8 +1663,8 @@ export class SystemsService {
       automox: snapshot.amFound === 1 || (snapshot.amLagDays !== null && snapshot.amLagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
       defender: snapshot.dfFound === 1 || (snapshot.dfLagDays !== null && snapshot.dfLagDays <= this.HEALTH_GRACE_PERIOD_DAYS),
       intune: snapshot.itLagDays !== null && snapshot.itLagDays <= this.INTUNE_INACTIVE_DAYS,
-      isActive: this.isSystemActive(snapshot, today),
-      healthStatus: this.calculateSystemHealth(snapshot, today),
+      isActive: this.isSystemActive(snapshot, referenceDate),
+      healthStatus: this.calculateSystemHealth(snapshot, referenceDate),
     }));
   }
 }
