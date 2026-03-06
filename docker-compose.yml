@@ -14,10 +14,22 @@ services:
     volumes:
       - db_data:/var/lib/mysql
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ./docker/mariadb/custom.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - mariadb_logs:/var/log/mysql
     ports:
       - "3308:3306"
     networks:
       - compliance-network
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 12G
+    command:
+      - "mysqld"
+      - "--innodb-buffer-pool-size=12G"
+      - "--innodb-log-file-size=2G"
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -63,7 +75,7 @@ services:
     container_name: compliance-tracker-frontend
     restart: unless-stopped
     ports:
-      - "8010:80"
+      - "80:80"
     depends_on:
       - backend
     networks:
@@ -76,6 +88,8 @@ services:
 
 volumes:
   db_data:
+    driver: local
+  mariadb_logs:
     driver: local
 
 networks:
