@@ -14,7 +14,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-      - ./docker/mariadb/custom.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./docker/mariadb/custom.cnf:/etc/mysql/mariadb.conf.d/99-custom.cnf:ro
       - mariadb_logs:/var/log/mysql
     ports:
       - "3308:3306"
@@ -26,10 +26,6 @@ services:
           memory: 16G
         reservations:
           memory: 12G
-    command:
-      - "mysqld"
-      - "--innodb-buffer-pool-size=12G"
-      - "--innodb-log-file-size=2G"
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s

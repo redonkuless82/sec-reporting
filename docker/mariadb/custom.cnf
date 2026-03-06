@@ -4,7 +4,7 @@
 # Workload: ~20k+ row inserts/day into daily_snapshots, read-heavy dashboard
 # =============================================================================
 
-[mysqld]
+[mariadbd]
 
 # ---------------------------------------------------------------------------
 # InnoDB Buffer Pool
@@ -56,19 +56,12 @@ innodb_io_capacity_max          = 4000
 innodb_read_io_threads          = 8
 innodb_write_io_threads         = 8
 
-# Page cleaner threads — flush dirty pages in parallel.
-innodb_page_cleaners            = 4
-
 # Purge threads — clean up old row versions (MVCC) in parallel.
 innodb_purge_threads            = 4
 
 # ---------------------------------------------------------------------------
-# InnoDB Change Buffer & Doublewrite
+# InnoDB Doublewrite
 # ---------------------------------------------------------------------------
-# Change buffer for secondary index updates during inserts.
-# "inserts" mode is optimal for insert-heavy workloads.
-innodb_change_buffering         = inserts
-
 # Doublewrite buffer protects against partial page writes on crash.
 # Keep ON for data safety. Disable only if filesystem guarantees atomic writes.
 innodb_doublewrite              = ON
@@ -138,7 +131,7 @@ optimizer_switch                = 'index_merge=on,index_merge_union=on,index_mer
 # Binary Logging (optional — enable if you need replication or point-in-time recovery)
 # ---------------------------------------------------------------------------
 # Uncomment the following lines to enable binary logging:
-# log_bin                       = mysql-bin
+# log_bin                       = mariadb-bin
 # binlog_format                 = ROW
 # expire_logs_days              = 7
 # max_binlog_size               = 256M
@@ -194,7 +187,7 @@ innodb_checksum_algorithm       = crc32
 # Bulk insert buffer for building indexes during large inserts.
 bulk_insert_buffer_size         = 64M
 
-[mysqldump]
+[mariadb-dump]
 # Allow large dumps without running out of memory.
 quick
 max_allowed_packet              = 64M
