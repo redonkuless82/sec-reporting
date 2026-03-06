@@ -11,10 +11,11 @@ export class SystemsController {
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('env') env?: string,
   ) {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 50;
-    return this.systemsService.findAll(search, pageNum, limitNum);
+    return this.systemsService.findAll(search, pageNum, limitNum, env);
   }
 
   @Get('stats')

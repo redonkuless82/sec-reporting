@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CacheModule } from '@nestjs/cache-manager';
 import databaseConfig from './config/database.config';
 import { ImportModule } from './modules/import/import.module';
 import { SystemsModule } from './modules/systems/systems.module';
@@ -14,6 +15,11 @@ import { AppController } from './app.controller';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
+    }),
+    CacheModule.register({
+      isGlobal: true,
+      ttl: 900000, // 15 minutes default TTL in milliseconds
+      max: 200, // max items in cache
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

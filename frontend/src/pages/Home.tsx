@@ -65,21 +65,14 @@ export default function Home() {
   const loadSystems = async () => {
     setLoading(true);
     try {
-      // Build search query - combine search term and env filter
-      let searchQuery = searchTerm;
-      
-      // Note: Backend doesn't support env filtering in search yet
-      // For now, we'll do client-side env filtering if needed
-      const response = await systemsApi.getSystems(searchQuery, currentPage, itemsPerPage);
-      
-      let filteredData = response.data || [];
-      
-      // Apply environment filter client-side if needed
-      if (selectedEnvironment) {
-        filteredData = filteredData.filter(s => s.env === selectedEnvironment);
-      }
-      
-      setSystems(filteredData);
+      const response = await systemsApi.getSystems(
+        searchTerm,
+        currentPage,
+        itemsPerPage,
+        selectedEnvironment || undefined,
+      );
+      // No more client-side filtering needed - backend handles env filter
+      setSystems(response.data || []);
       setTotalPages(response.totalPages || 1);
       setTotalSystems(response.total || 0);
     } catch (error) {
@@ -93,15 +86,9 @@ export default function Home() {
   const loadNewSystemsToday = async () => {
     setLoadingNewSystems(true);
     try {
-      const response = await systemsApi.getNewSystemsToday();
-      let newSystems = response.systems || [];
-      
-      // Filter by environment if selected
-      if (selectedEnvironment) {
-        newSystems = newSystems.filter(s => s.env === selectedEnvironment);
-      }
-      
-      setNewSystemsToday(newSystems);
+      const response = await systemsApi.getNewSystemsToday(selectedEnvironment || undefined);
+      // No more client-side filtering needed - backend handles env filter
+      setNewSystemsToday(response.systems || []);
       if (response.date) {
         setLatestImportDate(new Date(response.date));
       }
@@ -116,15 +103,9 @@ export default function Home() {
   const loadReappearedSystems = async () => {
     setLoadingReappearedSystems(true);
     try {
-      const response = await systemsApi.getReappearedSystems();
-      let reappeared = response.systems || [];
-      
-      // Filter by environment if selected
-      if (selectedEnvironment) {
-        reappeared = reappeared.filter((s: any) => s.env === selectedEnvironment);
-      }
-      
-      setReappearedSystems(reappeared);
+      const response = await systemsApi.getReappearedSystems(selectedEnvironment || undefined);
+      // No more client-side filtering needed - backend handles env filter
+      setReappearedSystems(response.systems || []);
     } catch (error) {
       console.error('Error loading reappeared systems:', error);
       setReappearedSystems([]);
@@ -136,15 +117,9 @@ export default function Home() {
   const loadMissingSystems = async () => {
     setLoadingMissingSystems(true);
     try {
-      const response = await systemsApi.getMissingSystems(7);
-      let missing = response.systems;
-      
-      // Filter by environment if selected
-      if (selectedEnvironment) {
-        missing = missing.filter(s => s.env === selectedEnvironment);
-      }
-      
-      setMissingSystems(missing);
+      const response = await systemsApi.getMissingSystems(7, selectedEnvironment || undefined);
+      // No more client-side filtering needed - backend handles env filter
+      setMissingSystems(response.systems);
     } catch (error) {
       console.error('Error loading missing systems:', error);
       setMissingSystems([]);

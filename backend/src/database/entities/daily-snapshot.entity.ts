@@ -4,6 +4,10 @@ import { System } from './system.entity';
 @Entity('daily_snapshots')
 @Index(['shortname', 'importDate'])
 @Index(['importDate'])
+@Index(['importDate', 'osFamily', 'serverOS'])
+@Index(['env', 'importDate'])
+@Index(['importDate', 'env', 'osFamily', 'serverOS', 'possibleFake'])
+@Index(['shortname', 'importDate', 'osFamily', 'serverOS'])
 export class DailySnapshot {
   @PrimaryGeneratedColumn()
   id: number;

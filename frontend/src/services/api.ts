@@ -12,11 +12,12 @@ const api = axios.create({
 
 export const systemsApi = {
   // Get all systems with optional search and pagination
-  getSystems: async (search?: string, page: number = 1, limit: number = 50): Promise<SystemsResponse> => {
+  getSystems: async (search?: string, page: number = 1, limit: number = 50, env?: string): Promise<SystemsResponse> => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     params.append('page', page.toString());
     params.append('limit', limit.toString());
+    if (env) params.append('env', env);
     
     const response = await api.get<SystemsResponse>(`/systems?${params.toString()}`);
     return response.data;
@@ -61,27 +62,34 @@ export const systemsApi = {
   },
 
   // Get stats
-  getStats: async (): Promise<StatsResponse> => {
-    const response = await api.get<StatsResponse>('/systems/stats');
+  getStats: async (env?: string): Promise<StatsResponse> => {
+    const params = new URLSearchParams();
+    if (env) params.append('env', env);
+    const response = await api.get<StatsResponse>(`/systems/stats?${params.toString()}`);
     return response.data;
   },
 
   // Get new systems today
-  getNewSystemsToday: async (): Promise<NewSystemsResponse> => {
-    const response = await api.get<NewSystemsResponse>('/systems/new-today');
+  getNewSystemsToday: async (env?: string): Promise<NewSystemsResponse> => {
+    const params = new URLSearchParams();
+    if (env) params.append('env', env);
+    const response = await api.get<NewSystemsResponse>(`/systems/new-today?${params.toString()}`);
     return response.data;
   },
 
   // Get reappeared systems (were inactive 15+ days, now back)
-  getReappearedSystems: async () => {
-    const response = await api.get('/systems/reappeared');
+  getReappearedSystems: async (env?: string) => {
+    const params = new URLSearchParams();
+    if (env) params.append('env', env);
+    const response = await api.get(`/systems/reappeared?${params.toString()}`);
     return response.data;
   },
 
   // Get missing systems
-  getMissingSystems: async (daysThreshold: number = 7): Promise<MissingSystemsResponse> => {
+  getMissingSystems: async (daysThreshold: number = 7, env?: string): Promise<MissingSystemsResponse> => {
     const params = new URLSearchParams();
     params.append('days', daysThreshold.toString());
+    if (env) params.append('env', env);
     
     const response = await api.get<MissingSystemsResponse>(`/systems/missing?${params.toString()}`);
     return response.data;

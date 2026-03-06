@@ -14,6 +14,6 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_NAME || 'compliance_tracker',
   entities: [System, DailySnapshot],
   migrations: ['src/database/migrations/*.ts'],
-  synchronize: true,
+  synchronize: false,
   logging: process.env.NODE_ENV === 'development',
 });

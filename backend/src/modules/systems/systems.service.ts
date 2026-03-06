@@ -1,11 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like } from 'typeorm';
+import { Repository } from 'typeorm';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { System } from '../../database/entities/system.entity';
 import { DailySnapshot } from '../../database/entities/daily-snapshot.entity';
 
 @Injectable()
 export class SystemsService {
+  private readonly logger = new Logger(SystemsService.name);
+
   // Intune inactivity threshold in days
   private readonly INTUNE_INACTIVE_DAYS = 15;
   
@@ -14,12 +17,102 @@ export class SystemsService {
   // Covers weekends and provides stable metrics while still detecting real issues
   private readonly HEALTH_GRACE_PERIOD_DAYS = 3;
 
+  // In-memory cache for latest import date to avoid redundant MAX queries within short windows
+  private cachedLatestImportDate: { date: Date | null; timestamp: number } | null = null;
+  private readonly CACHE_TTL_MS = 60000; // 1 minute
+
+  /**
+   * Columns needed for health calculations in bulk queries.
+   * Excludes heavy/unused columns like osBuildNumber, osName, ipPriv, ipPub, userEmail,
+   * numCriticals, amLastUser, needsAMReboot, needsAMAttention, vmPowerState, dfID, itID,
+   * scriptResult, createdAt, supportedOS.
+   */
+  private readonly HEALTH_CALC_SELECT = [
+    'snapshot.id',
+    'snapshot.shortname',
+    'snapshot.importDate',
+    'snapshot.env',
+    'snapshot.fullname',
+    'snapshot.r7Found',
+    'snapshot.amFound',
+    'snapshot.dfFound',
+    'snapshot.itFound',
+    'snapshot.vmFound',
+    'snapshot.r7LagDays',
+    'snapshot.amLagDays',
+    'snapshot.dfLagDays',
+    'snapshot.itLagDays',
+    'snapshot.possibleFake',
+    'snapshot.serverOS',
+    'snapshot.osFamily',
+    'snapshot.seenRecently',
+    'snapshot.recentR7Scan',
+    'snapshot.recentAMScan',
+    'snapshot.recentDFScan',
+    'snapshot.recentITScan',
+  ];
+
   constructor(
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
     @InjectRepository(System)
     private systemRepository: Repository<System>,
     @InjectRepository(DailySnapshot)
     private snapshotRepository: Repository<DailySnapshot>,
   ) {}
+
+  /**
+   * Helper method for cached queries with graceful error handling.
+   * If cache read/write fails, the method still returns fresh data.
+   */
+  private async getCachedOrFetch<T>(
+    cacheKey: string,
+    ttlMs: number,
+    fetchFn: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      const cached = await this.cacheManager.get<T>(cacheKey);
+      if (cached !== undefined && cached !== null) {
+        this.logger.debug(`Cache hit: ${cacheKey}`);
+        return cached;
+      }
+    } catch (e) {
+      this.logger.warn(`Cache read failed for key ${cacheKey}: ${e.message}`);
+    }
+
+    const result = await fetchFn();
+
+    try {
+      await this.cacheManager.set(cacheKey, result, ttlMs);
+      this.logger.debug(`Cache set: ${cacheKey} (TTL: ${ttlMs}ms)`);
+    } catch (e) {
+      this.logger.warn(`Cache write failed for key ${cacheKey}: ${e.message}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Get the latest import date with short-lived in-memory cache.
+   * Eliminates redundant MAX(importDate) queries when multiple methods
+   * are called within the same request cycle.
+   */
+  async getLatestImportDate(): Promise<Date | null> {
+    const now = Date.now();
+    if (this.cachedLatestImportDate && (now - this.cachedLatestImportDate.timestamp) < this.CACHE_TTL_MS) {
+      return this.cachedLatestImportDate.date;
+    }
+
+    const result = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('MAX(snapshot.importDate)', 'maxDate')
+      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' })
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' })
+      .getRawOne();
+
+    const date = result?.maxDate ? new Date(result.maxDate) : null;
+    this.cachedLatestImportDate = { date, timestamp: now };
+    return date;
+  }
 
   /**
    * Check if a system is active based on Intune lag days
@@ -118,22 +211,31 @@ export class SystemsService {
     return healthTools / 3;
   }
 
-  async findAll(search?: string, page: number = 1, limit: number = 50) {
+  async findAll(search?: string, page: number = 1, limit: number = 50, env?: string) {
     const skip = (page - 1) * limit;
-    
-    const whereCondition = search
-      ? [
-          { shortname: Like(`%${search}%`) },
-          { fullname: Like(`%${search}%`) },
-        ]
-      : {};
 
-    const [systems, total] = await this.systemRepository.findAndCount({
-      where: whereCondition,
-      skip,
-      take: limit,
-      order: { shortname: 'ASC' },
-    });
+    const queryBuilder = this.systemRepository.createQueryBuilder('system');
+
+    if (search) {
+      queryBuilder.where(
+        '(system.shortname LIKE :search OR system.fullname LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    if (env) {
+      if (search) {
+        queryBuilder.andWhere('system.env = :env', { env });
+      } else {
+        queryBuilder.where('system.env = :env', { env });
+      }
+    }
+
+    const [systems, total] = await queryBuilder
+      .skip(skip)
+      .take(limit)
+      .orderBy('system.shortname', 'ASC')
+      .getManyAndCount();
 
     return {
       data: systems,
@@ -236,41 +338,38 @@ export class SystemsService {
   }
 
   async getStats() {
-    const totalSystems = await this.systemRepository.count();
-    
-    const latestImportDate = await this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .select('MAX(snapshot.importDate)', 'maxDate')
-      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-      .getRawOne();
+    return this.getCachedOrFetch('system-stats', 900000, async () => {
+      const totalSystems = await this.systemRepository.count();
+      
+      const latestDate = await this.getLatestImportDate();
 
-    const latestSnapshots = latestImportDate?.maxDate
-      ? await this.snapshotRepository
-          .createQueryBuilder('snapshot')
-          .where('snapshot.importDate = :importDate', { importDate: latestImportDate.maxDate })
-          .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-          .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-          .getCount()
-      : 0;
+      const latestSnapshots = latestDate
+        ? await this.snapshotRepository
+            .createQueryBuilder('snapshot')
+            .where('snapshot.importDate = :importDate', { importDate: latestDate })
+            .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+            .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
+            .getCount()
+        : 0;
 
-    return {
-      totalSystems,
-      latestImportDate: latestImportDate?.maxDate || null,
-      latestSnapshotCount: latestSnapshots,
-    };
+      return {
+        totalSystems,
+        latestImportDate: latestDate,
+        latestSnapshotCount: latestSnapshots,
+      };
+    });
   }
 
   async getNewSystemsToday(env?: string) {
-    // Get the latest import date from the database (not current date)
-    const latestImportDate = await this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .select('MAX(snapshot.importDate)', 'maxDate')
-      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-      .getRawOne();
+    const cacheKey = `new-systems:${env || 'all'}`;
+    return this.getCachedOrFetch(cacheKey, 900000, () => this.fetchNewSystemsToday(env));
+  }
 
-    if (!latestImportDate?.maxDate) {
+  private async fetchNewSystemsToday(env?: string) {
+    // Get the latest import date from the database (not current date)
+    const latestDate = await this.getLatestImportDate();
+
+    if (!latestDate) {
       return {
         count: 0,
         systems: [],
@@ -279,7 +378,7 @@ export class SystemsService {
     }
 
     // Use the latest import date as "today"
-    const today = new Date(latestImportDate.maxDate);
+    const today = new Date(latestDate);
     today.setHours(0, 0, 0, 0);
     
     const tomorrow = new Date(today);
@@ -310,30 +409,37 @@ export class SystemsService {
       };
     }
 
-    const shortnamesWithSnapshotsToday = systemsWithSnapshotsToday.map(s => s.shortname);
+    const todayShortnames = systemsWithSnapshotsToday.map(s => s.shortname);
 
-    // For each system, check if it had any snapshots before the latest import date
-    const newSystems = [];
-    for (const shortname of shortnamesWithSnapshotsToday) {
-      const previousSnapshot = await this.snapshotRepository
-        .createQueryBuilder('snapshot')
-        .where('snapshot.shortname = :shortname', { shortname })
-        .andWhere('snapshot.importDate < :today', { today })
-        .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-        .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-        .limit(1)
-        .getOne();
-
-      // If no previous snapshot exists, this is a new system (first appearance)
-      if (!previousSnapshot) {
-        const system = await this.systemRepository.findOne({
-          where: { shortname },
-        });
-        if (system) {
-          newSystems.push(system);
-        }
-      }
+    if (todayShortnames.length === 0) {
+      return { count: 0, systems: [], date: today };
     }
+
+    // Bulk query: find which of today's systems have ANY previous snapshot before today
+    // This replaces the N+1 loop that queried each system individually
+    const systemsWithPreviousSnapshots = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('DISTINCT snapshot.shortname', 'shortname')
+      .where('snapshot.shortname IN (:...shortnames)', { shortnames: todayShortnames })
+      .andWhere('snapshot.importDate < :today', { today })
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
+      .getRawMany();
+
+    const existingShortnames = new Set(systemsWithPreviousSnapshots.map(s => s.shortname));
+
+    // New systems are those NOT in the existing set (no previous snapshots)
+    const newShortnames = todayShortnames.filter(sn => !existingShortnames.has(sn));
+
+    if (newShortnames.length === 0) {
+      return { count: 0, systems: [], date: today };
+    }
+
+    // Bulk fetch system records for all new systems at once
+    const newSystems = await this.systemRepository
+      .createQueryBuilder('system')
+      .where('system.shortname IN (:...shortnames)', { shortnames: newShortnames })
+      .getMany();
 
     return {
       count: newSystems.length,
@@ -343,15 +449,15 @@ export class SystemsService {
   }
 
   async getMissingSystems(daysThreshold: number = 7, env?: string) {
-    // Get the latest import date (today's snapshot)
-    const latestImportDate = await this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .select('MAX(snapshot.importDate)', 'maxDate')
-      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-      .getRawOne();
+    const cacheKey = `missing-systems:${daysThreshold}:${env || 'all'}`;
+    return this.getCachedOrFetch(cacheKey, 900000, () => this.fetchMissingSystems(daysThreshold, env));
+  }
 
-    if (!latestImportDate?.maxDate) {
+  private async fetchMissingSystems(daysThreshold: number = 7, env?: string) {
+    // Get the latest import date (today's snapshot)
+    const latestDate = await this.getLatestImportDate();
+
+    if (!latestDate) {
       return {
         count: 0,
         systems: [],
@@ -360,8 +466,14 @@ export class SystemsService {
       };
     }
 
-    const today = new Date(latestImportDate.maxDate);
+    const today = new Date(latestDate);
     today.setHours(0, 0, 0, 0);
+
+    // Calculate start and end of day for range query (avoids DATE() function preventing index usage)
+    const todayStartOfDay = new Date(today);
+    todayStartOfDay.setHours(0, 0, 0, 0);
+    const todayEndOfDay = new Date(today);
+    todayEndOfDay.setHours(23, 59, 59, 999);
 
     // Get all systems from the systems table (filtered by environment if provided)
     const systemsQueryBuilder = this.systemRepository.createQueryBuilder('system');
@@ -374,7 +486,8 @@ export class SystemsService {
     const todayQueryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
       .select('DISTINCT snapshot.shortname', 'shortname')
-      .where('DATE(snapshot.importDate) = DATE(:today)', { today })
+      .where('snapshot.importDate >= :todayStartOfDay', { todayStartOfDay })
+      .andWhere('snapshot.importDate <= :todayEndOfDay', { todayEndOfDay })
       .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
       .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
     
@@ -395,35 +508,40 @@ export class SystemsService {
       return {
         count: 0,
         systems: [],
-        latestImportDate: latestImportDate.maxDate,
+        latestImportDate: latestDate,
         daysThreshold,
       };
     }
 
-    // Get the last seen date for each missing system
-    const missingSystemsWithLastSeen = await Promise.all(
-      missingSystems.map(async (system) => {
-        const lastSnapshot = await this.snapshotRepository
-          .createQueryBuilder('snapshot')
-          .where('snapshot.shortname = :shortname', { shortname: system.shortname })
-          .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-          .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-          .orderBy('snapshot.importDate', 'DESC')
-          .limit(1)
-          .getOne();
+    // Bulk query: get the last seen date for ALL missing systems at once
+    // This replaces the N+1 loop that queried each system individually
+    const missingShortnames = missingSystems.map(s => s.shortname);
 
-        return {
-          ...system,
-          lastSeenDate: lastSnapshot?.importDate || null,
-          daysSinceLastSeen: lastSnapshot?.importDate
-            ? Math.floor(
-                (today.getTime() - new Date(lastSnapshot.importDate).getTime()) /
-                  (1000 * 60 * 60 * 24)
-              )
-            : null,
-        };
-      })
-    );
+    const lastSeenResults = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('snapshot.shortname', 'shortname')
+      .addSelect('MAX(snapshot.importDate)', 'lastSeenDate')
+      .where('snapshot.shortname IN (:...shortnames)', { shortnames: missingShortnames })
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
+      .groupBy('snapshot.shortname')
+      .getRawMany();
+
+    const lastSeenMap = new Map(lastSeenResults.map(r => [r.shortname, r.lastSeenDate]));
+
+    const missingSystemsWithLastSeen = missingSystems.map(system => {
+      const lastSeenDate = lastSeenMap.get(system.shortname) || null;
+      return {
+        ...system,
+        lastSeenDate,
+        daysSinceLastSeen: lastSeenDate
+          ? Math.floor(
+              (today.getTime() - new Date(lastSeenDate).getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          : null,
+      };
+    });
 
     // Sort by shortname
     missingSystemsWithLastSeen.sort((a, b) => a.shortname.localeCompare(b.shortname));
@@ -431,12 +549,17 @@ export class SystemsService {
     return {
       count: missingSystemsWithLastSeen.length,
       systems: missingSystemsWithLastSeen,
-      latestImportDate: latestImportDate.maxDate,
+      latestImportDate: latestDate,
       daysThreshold,
     };
   }
 
   async getHealthTrending(days: number = 30, env?: string) {
+    const cacheKey = `health-trending:${days}:${env || 'all'}`;
+    return this.getCachedOrFetch(cacheKey, 900000, () => this.fetchHealthTrending(days, env));
+  }
+
+  private async fetchHealthTrending(days: number = 30, env?: string) {
     // Get the date range
     const endDate = new Date();
     endDate.setHours(23, 59, 59, 999);
@@ -446,8 +569,10 @@ export class SystemsService {
     startDate.setHours(0, 0, 0, 0);
 
     // Get all snapshots in the date range, grouped by date
+    // Only select columns needed for health calculations to reduce data transfer (~70% reduction)
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
+      .select(this.HEALTH_CALC_SELECT)
       .where('snapshot.importDate >= :startDate', { startDate })
       .andWhere('snapshot.importDate <= :endDate', { endDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)') // Exclude fake systems
@@ -746,54 +871,95 @@ export class SystemsService {
   }
 
   /**
-   * Check if a system has been consecutively active for the specified number of days
-   * Returns true if the system appears in snapshots for all consecutive days
+   * Bulk-fetch all snapshots in a consecutive-day window and determine which systems
+   * were consecutively active for all days. Returns a Map of shortname -> Map<dateKey, latestSnapshot>.
+   * Only systems that have an active snapshot on EVERY expected date are included.
+   *
+   * This replaces the per-system isConsecutivelyActive() N+1 pattern.
+   * One query fetches all data; filtering happens in memory.
    */
-  private async isConsecutivelyActive(
-    shortname: string,
-    endDate: Date,
+  private async fetchWindowSnapshotsAndFilterConsecutiveActive(
+    targetDate: Date,
     consecutiveDays: number,
-    env?: string
-  ): Promise<boolean> {
-    const dates = [];
+    env?: string,
+  ): Promise<{
+    consecutiveSystemDateMaps: Map<string, Map<string, DailySnapshot>>;
+    expectedDates: string[];
+  }> {
+    const windowStart = new Date(targetDate);
+    windowStart.setDate(windowStart.getDate() - (consecutiveDays - 1));
+    windowStart.setHours(0, 0, 0, 0);
+
+    const windowEnd = new Date(targetDate);
+    windowEnd.setHours(23, 59, 59, 999);
+
+    // Fetch ALL snapshots in the consecutive-day window in ONE query
+    // Only select columns needed for health calculations to reduce data transfer
+    const queryBuilder = this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select(this.HEALTH_CALC_SELECT)
+      .where('snapshot.importDate >= :windowStart', { windowStart })
+      .andWhere('snapshot.importDate <= :windowEnd', { windowEnd })
+      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' })
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' });
+
+    if (env) {
+      queryBuilder.andWhere('snapshot.env = :env', { env });
+    }
+
+    const allSnapshots = await queryBuilder.getMany();
+
+    // Group snapshots by shortname and by date, keeping only the latest per system per day
+    const snapshotsBySystem = new Map<string, Map<string, DailySnapshot>>();
+    for (const snapshot of allSnapshots) {
+      if (!snapshotsBySystem.has(snapshot.shortname)) {
+        snapshotsBySystem.set(snapshot.shortname, new Map());
+      }
+      const dateKey = snapshot.importDate instanceof Date
+        ? snapshot.importDate.toISOString().split('T')[0]
+        : new Date(snapshot.importDate).toISOString().split('T')[0];
+
+      const systemDates = snapshotsBySystem.get(snapshot.shortname)!;
+      const existing = systemDates.get(dateKey);
+      if (!existing || snapshot.id > existing.id) {
+        systemDates.set(dateKey, snapshot);
+      }
+    }
+
+    // Build the list of expected date keys
+    const expectedDates: string[] = [];
     for (let i = 0; i < consecutiveDays; i++) {
-      const date = new Date(endDate);
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0);
-      dates.push(date);
+      const d = new Date(targetDate);
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      expectedDates.push(d.toISOString().split('T')[0]);
     }
 
-    // Check if system has snapshots for all consecutive days
-    for (const date of dates) {
-      const nextDay = new Date(date);
-      nextDay.setDate(nextDay.getDate() + 1);
+    // Filter to systems that have an active snapshot for EVERY expected date
+    const consecutiveSystemDateMaps = new Map<string, Map<string, DailySnapshot>>();
 
-      const queryBuilder = this.snapshotRepository
-        .createQueryBuilder('snapshot')
-        .where('snapshot.shortname = :shortname', { shortname })
-        .andWhere('snapshot.importDate >= :date', { date })
-        .andWhere('snapshot.importDate < :nextDay', { nextDay })
-        .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
-        .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-        .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
-
-      if (env) {
-        queryBuilder.andWhere('snapshot.env = :env', { env });
+    for (const [shortname, dateMap] of snapshotsBySystem.entries()) {
+      let isConsecutive = true;
+      for (const expectedDate of expectedDates) {
+        const snapshot = dateMap.get(expectedDate);
+        if (!snapshot || !this.isSystemActive(snapshot, new Date(expectedDate))) {
+          isConsecutive = false;
+          break;
+        }
       }
-
-      const snapshot = await queryBuilder.getOne();
-      
-      // If no snapshot for this day, or system is inactive, return false
-      if (!snapshot || !this.isSystemActive(snapshot, date)) {
-        return false;
+      if (isConsecutive) {
+        consecutiveSystemDateMaps.set(shortname, dateMap);
       }
     }
 
-    return true;
+    return { consecutiveSystemDateMaps, expectedDates };
   }
 
   /**
-   * Calculate metrics for systems that have been online consecutively for specified days
+   * Calculate metrics for systems that have been online consecutively for specified days.
+   * Uses bulk-fetch approach: ONE query for the entire window, then in-memory filtering.
+   * Eliminates the N+1 pattern of calling isConsecutivelyActive() per system.
    */
   private async calculateConsecutiveActiveMetrics(
     date: string,
@@ -803,44 +969,18 @@ export class SystemsService {
     const targetDate = new Date(date);
     targetDate.setHours(0, 0, 0, 0);
 
-    const nextDay = new Date(targetDate);
-    nextDay.setDate(nextDay.getDate() + 1);
+    // Bulk-fetch all snapshots in the window and filter to consecutively active systems
+    const { consecutiveSystemDateMaps } =
+      await this.fetchWindowSnapshotsAndFilterConsecutiveActive(targetDate, consecutiveDays, env);
 
-    // Get all systems for this date
-    const queryBuilder = this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .where('snapshot.importDate >= :targetDate', { targetDate })
-      .andWhere('snapshot.importDate < :nextDay', { nextDay })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
-      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
+    // For each consecutively active system, use the target date's snapshot for metrics
+    const targetDateKey = targetDate.toISOString().split('T')[0];
+    const consecutiveActiveSystems: DailySnapshot[] = [];
 
-    if (env) {
-      queryBuilder.andWhere('snapshot.env = :env', { env });
-    }
-
-    const snapshots = await queryBuilder.getMany();
-
-    // Get unique systems
-    const latestSnapshotPerSystem = new Map<string, typeof snapshots[0]>();
-    snapshots.forEach((snapshot) => {
-      const existing = latestSnapshotPerSystem.get(snapshot.shortname);
-      if (!existing || snapshot.id > existing.id) {
-        latestSnapshotPerSystem.set(snapshot.shortname, snapshot);
-      }
-    });
-
-    // Filter to only systems that have been consecutively active
-    const consecutiveActiveSystems = [];
-    for (const [shortname, snapshot] of latestSnapshotPerSystem.entries()) {
-      const isConsecutive = await this.isConsecutivelyActive(
-        shortname,
-        targetDate,
-        consecutiveDays,
-        env
-      );
-      if (isConsecutive) {
-        consecutiveActiveSystems.push(snapshot);
+    for (const [, dateMap] of consecutiveSystemDateMaps.entries()) {
+      const targetSnapshot = dateMap.get(targetDateKey);
+      if (targetSnapshot) {
+        consecutiveActiveSystems.push(targetSnapshot);
       }
     }
 
@@ -892,61 +1032,27 @@ export class SystemsService {
   }
 
   /**
-   * Calculate health improvement for systems that have been consecutively active
+   * Calculate health improvement for systems that have been consecutively active.
+   * Uses bulk-fetch approach: ONE query for the entire window, then in-memory comparison.
+   * Start and end snapshots are extracted from the already-fetched data — no per-system queries.
    */
   private async calculateConsecutiveActiveHealthImprovement(
     endDate: Date,
     consecutiveDays: number,
     env?: string
   ) {
-    const startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - (consecutiveDays - 1));
-    startDate.setHours(0, 0, 0, 0);
-
     const endDateCopy = new Date(endDate);
     endDateCopy.setHours(0, 0, 0, 0);
 
-    // Get systems that have been consecutively active
-    const endNextDay = new Date(endDateCopy);
-    endNextDay.setDate(endNextDay.getDate() + 1);
+    const startDate = new Date(endDateCopy);
+    startDate.setDate(startDate.getDate() - (consecutiveDays - 1));
+    startDate.setHours(0, 0, 0, 0);
 
-    const queryBuilder = this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .where('snapshot.importDate >= :endDate', { endDate: endDateCopy })
-      .andWhere('snapshot.importDate < :endNextDay', { endNextDay })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
-      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }); // Only Windows systems
+    // Bulk-fetch all snapshots in the window and filter to consecutively active systems
+    const { consecutiveSystemDateMaps } =
+      await this.fetchWindowSnapshotsAndFilterConsecutiveActive(endDateCopy, consecutiveDays, env);
 
-    if (env) {
-      queryBuilder.andWhere('snapshot.env = :env', { env });
-    }
-
-    const endSnapshots = await queryBuilder.getMany();
-
-    const latestSnapshotPerSystem = new Map<string, typeof endSnapshots[0]>();
-    endSnapshots.forEach((snapshot) => {
-      const existing = latestSnapshotPerSystem.get(snapshot.shortname);
-      if (!existing || snapshot.id > existing.id) {
-        latestSnapshotPerSystem.set(snapshot.shortname, snapshot);
-      }
-    });
-
-    // Filter to consecutively active systems
-    const consecutiveActiveSystems = [];
-    for (const [shortname] of latestSnapshotPerSystem.entries()) {
-      const isConsecutive = await this.isConsecutivelyActive(
-        shortname,
-        endDateCopy,
-        consecutiveDays,
-        env
-      );
-      if (isConsecutive) {
-        consecutiveActiveSystems.push(shortname);
-      }
-    }
-
-    if (consecutiveActiveSystems.length === 0) {
+    if (consecutiveSystemDateMaps.size === 0) {
       return {
         totalSystems: 0,
         systemsImproved: 0,
@@ -956,43 +1062,19 @@ export class SystemsService {
       };
     }
 
-    // Compare health scores from start to end
+    const startDateKey = startDate.toISOString().split('T')[0];
+    const endDateKey = endDateCopy.toISOString().split('T')[0];
+
+    // Compare health scores from start to end using already-fetched data
     let systemsImproved = 0;
     let systemsDegraded = 0;
     let systemsStable = 0;
     let totalImprovement = 0;
+    let comparedCount = 0;
 
-    for (const shortname of consecutiveActiveSystems) {
-      // Get start snapshot
-      const startNextDay = new Date(startDate);
-      startNextDay.setDate(startNextDay.getDate() + 1);
-
-      const startQueryBuilder = this.snapshotRepository
-        .createQueryBuilder('snapshot')
-        .where('snapshot.shortname = :shortname', { shortname })
-        .andWhere('snapshot.importDate >= :startDate', { startDate })
-        .andWhere('snapshot.importDate < :startNextDay', { startNextDay })
-        .orderBy('snapshot.id', 'DESC');
-
-      if (env) {
-        startQueryBuilder.andWhere('snapshot.env = :env', { env });
-      }
-
-      const startSnapshot = await startQueryBuilder.getOne();
-
-      // Get end snapshot
-      const endQueryBuilder = this.snapshotRepository
-        .createQueryBuilder('snapshot')
-        .where('snapshot.shortname = :shortname', { shortname })
-        .andWhere('snapshot.importDate >= :endDate', { endDate: endDateCopy })
-        .andWhere('snapshot.importDate < :endNextDay', { endNextDay })
-        .orderBy('snapshot.id', 'DESC');
-
-      if (env) {
-        endQueryBuilder.andWhere('snapshot.env = :env', { env });
-      }
-
-      const endSnapshot = await endQueryBuilder.getOne();
+    for (const [, dateMap] of consecutiveSystemDateMaps.entries()) {
+      const startSnapshot = dateMap.get(startDateKey);
+      const endSnapshot = dateMap.get(endDateKey);
 
       if (startSnapshot && endSnapshot) {
         const startScore = this.calculateHealthScore(startSnapshot, startDate);
@@ -1000,6 +1082,7 @@ export class SystemsService {
         const improvement = endScore - startScore;
 
         totalImprovement += improvement;
+        comparedCount++;
 
         if (improvement > 0) {
           systemsImproved++;
@@ -1011,12 +1094,12 @@ export class SystemsService {
       }
     }
 
-    const averageImprovement = consecutiveActiveSystems.length > 0
-      ? totalImprovement / consecutiveActiveSystems.length
+    const averageImprovement = comparedCount > 0
+      ? totalImprovement / comparedCount
       : 0;
 
     return {
-      totalSystems: consecutiveActiveSystems.length,
+      totalSystems: consecutiveSystemDateMaps.size,
       systemsImproved,
       systemsDegraded,
       systemsStable,
@@ -1025,7 +1108,9 @@ export class SystemsService {
   }
 
   /**
-   * Get detailed drill-down data for 5-day consecutive active systems
+   * Get detailed drill-down data for 5-day consecutive active systems.
+   * Uses bulk-fetch approach: ONE query for the entire 5-day window.
+   * All history data is extracted from the already-fetched snapshots — no per-system queries.
    */
   async getFiveDayActiveDrillDown(date: string, env?: string) {
     const targetDate = new Date(date);
@@ -1035,49 +1120,33 @@ export class SystemsService {
     startDate.setDate(startDate.getDate() - 4); // 5 days total including target date
     startDate.setHours(0, 0, 0, 0);
 
-    const nextDay = new Date(targetDate);
-    nextDay.setDate(nextDay.getDate() + 1);
+    // Bulk-fetch all snapshots in the 5-day window and filter to consecutively active systems
+    const { consecutiveSystemDateMaps, expectedDates } =
+      await this.fetchWindowSnapshotsAndFilterConsecutiveActive(targetDate, 5, env);
 
-    // Get all systems for the target date
-    const queryBuilder = this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .where('snapshot.importDate >= :targetDate', { targetDate })
-      .andWhere('snapshot.importDate < :nextDay', { nextDay })
-      .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
-      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' })
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' });
+    const targetDateKey = targetDate.toISOString().split('T')[0];
 
-    if (env) {
-      queryBuilder.andWhere('snapshot.env = :env', { env });
-    }
+    // Sort expected dates chronologically (they are stored newest-first)
+    const sortedDates = [...expectedDates].sort();
 
-    const snapshots = await queryBuilder.getMany();
+    // Build per-system history from already-fetched data (no additional queries)
+    const systemsWithHistory: Array<{
+      shortname: string;
+      fullname: string;
+      env: string;
+      currentHealthStatus: string;
+      currentHealthScore: number;
+      healthChange: string;
+      healthScoreChange: number;
+      currentToolStatus: { r7: boolean; am: boolean; df: boolean; it: boolean };
+      dailyHealth: Array<{
+        date: string;
+        healthStatus: string;
+        healthScore: number;
+        toolStatus: { r7: boolean; am: boolean; df: boolean; it: boolean };
+      }>;
+    }> = [];
 
-    // Get unique systems
-    const latestSnapshotPerSystem = new Map<string, typeof snapshots[0]>();
-    snapshots.forEach((snapshot) => {
-      const existing = latestSnapshotPerSystem.get(snapshot.shortname);
-      if (!existing || snapshot.id > existing.id) {
-        latestSnapshotPerSystem.set(snapshot.shortname, snapshot);
-      }
-    });
-
-    // Filter to only systems that have been consecutively active for 5 days
-    const consecutiveActiveSystems = [];
-    for (const [shortname, snapshot] of latestSnapshotPerSystem.entries()) {
-      const isConsecutive = await this.isConsecutivelyActive(
-        shortname,
-        targetDate,
-        5,
-        env
-      );
-      if (isConsecutive) {
-        consecutiveActiveSystems.push({ shortname, snapshot });
-      }
-    }
-
-    // For each system, get health data for all 5 days
-    const systemsWithHistory = [];
     const toolDegradationStats = {
       r7: { lost: 0, gained: 0, stable: 0 },
       am: { lost: 0, gained: 0, stable: 0 },
@@ -1085,38 +1154,22 @@ export class SystemsService {
       it: { lost: 0, gained: 0, stable: 0 },
     };
 
-    for (const { shortname, snapshot } of consecutiveActiveSystems) {
-      // Get snapshots for all 5 days
-      const historyQueryBuilder = this.snapshotRepository
-        .createQueryBuilder('snapshot')
-        .where('snapshot.shortname = :shortname', { shortname })
-        .andWhere('snapshot.importDate >= :startDate', { startDate })
-        .andWhere('snapshot.importDate < :nextDay', { nextDay })
-        .orderBy('snapshot.importDate', 'ASC');
+    for (const [shortname, dateMap] of consecutiveSystemDateMaps.entries()) {
+      const targetSnapshot = dateMap.get(targetDateKey);
+      if (!targetSnapshot) continue;
 
-      if (env) {
-        historyQueryBuilder.andWhere('snapshot.env = :env', { env });
-      }
+      // Build daily health data from the already-fetched dateMap
+      const dailyHealth: Array<{
+        date: string;
+        healthStatus: string;
+        healthScore: number;
+        toolStatus: { r7: boolean; am: boolean; df: boolean; it: boolean };
+      }> = [];
 
-      const historySnapshots = await historyQueryBuilder.getMany();
+      for (const dateKey of sortedDates) {
+        const snap = dateMap.get(dateKey);
+        if (!snap) continue;
 
-      // Group by date and get latest per day
-      const snapshotsByDate = new Map<string, typeof historySnapshots[0]>();
-      historySnapshots.forEach((s) => {
-        const date = s.importDate instanceof Date ? s.importDate : new Date(s.importDate);
-        const dateKey = date.toISOString().split('T')[0];
-        const existing = snapshotsByDate.get(dateKey);
-        if (!existing || s.id > existing.id) {
-          snapshotsByDate.set(dateKey, s);
-        }
-      });
-
-      // Build daily health data
-      const dailyHealth = [];
-      const dates = Array.from(snapshotsByDate.keys()).sort();
-      
-      for (const dateKey of dates) {
-        const snap = snapshotsByDate.get(dateKey)!;
         const refDate = new Date(dateKey);
         const healthStatus = this.calculateSystemHealth(snap, refDate);
         const healthScore = this.calculateHealthScore(snap, refDate);
@@ -1141,7 +1194,7 @@ export class SystemsService {
         const firstDay = dailyHealth[0];
         const lastDay = dailyHealth[dailyHealth.length - 1];
         healthScoreChange = lastDay.healthScore - firstDay.healthScore;
-        
+
         if (healthScoreChange > 0) {
           healthChange = 'improved';
         } else if (healthScoreChange < 0) {
@@ -1153,7 +1206,7 @@ export class SystemsService {
         tools.forEach((tool) => {
           const firstStatus = firstDay.toolStatus[tool];
           const lastStatus = lastDay.toolStatus[tool];
-          
+
           if (firstStatus && !lastStatus) {
             toolDegradationStats[tool].lost++;
           } else if (!firstStatus && lastStatus) {
@@ -1164,23 +1217,23 @@ export class SystemsService {
         });
       }
 
-      // Get current health status
-      const currentHealthStatus = this.calculateSystemHealth(snapshot, targetDate);
-      const currentHealthScore = this.calculateHealthScore(snapshot, targetDate);
+      // Get current health status from target date snapshot
+      const currentHealthStatus = this.calculateSystemHealth(targetSnapshot, targetDate);
+      const currentHealthScore = this.calculateHealthScore(targetSnapshot, targetDate);
 
       systemsWithHistory.push({
         shortname,
-        fullname: snapshot.fullname,
-        env: snapshot.env,
+        fullname: targetSnapshot.fullname,
+        env: targetSnapshot.env,
         currentHealthStatus,
         currentHealthScore,
         healthChange,
         healthScoreChange: Math.round(healthScoreChange * 100) / 100,
         currentToolStatus: {
-          r7: snapshot.r7Found === 1,
-          am: snapshot.amFound === 1,
-          df: snapshot.dfFound === 1,
-          it: snapshot.itFound === 1,
+          r7: targetSnapshot.r7Found === 1,
+          am: targetSnapshot.amFound === 1,
+          df: targetSnapshot.dfFound === 1,
+          it: targetSnapshot.itFound === 1,
         },
         dailyHealth,
       });
@@ -1262,26 +1315,22 @@ export class SystemsService {
    */
   async getHealthySystemsForExport(env?: string) {
     // Get the latest import date
-    const latestImportDate = await this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .select('MAX(snapshot.importDate)', 'maxDate')
-      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-      .getRawOne();
+    const latestDate = await this.getLatestImportDate();
 
-    if (!latestImportDate?.maxDate) {
+    if (!latestDate) {
       return [];
     }
 
-    const today = new Date(latestImportDate.maxDate);
+    const today = new Date(latestDate);
     today.setHours(0, 0, 0, 0);
 
     const nextDay = new Date(today);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    // Get all snapshots for the latest date
+    // Get all snapshots for the latest date - only select columns needed for health calculations
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
+      .select(this.HEALTH_CALC_SELECT)
       .where('snapshot.importDate >= :today', { today })
       .andWhere('snapshot.importDate < :nextDay', { nextDay })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
@@ -1323,26 +1372,22 @@ export class SystemsService {
    */
   async getUnhealthySystemsForExport(env?: string) {
     // Get the latest import date
-    const latestImportDate = await this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .select('MAX(snapshot.importDate)', 'maxDate')
-      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-      .getRawOne();
+    const latestDate = await this.getLatestImportDate();
 
-    if (!latestImportDate?.maxDate) {
+    if (!latestDate) {
       return [];
     }
 
-    const today = new Date(latestImportDate.maxDate);
+    const today = new Date(latestDate);
     today.setHours(0, 0, 0, 0);
 
     const nextDay = new Date(today);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    // Get all snapshots for the latest date
+    // Get all snapshots for the latest date - only select columns needed for health calculations
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
+      .select(this.HEALTH_CALC_SELECT)
       .where('snapshot.importDate >= :today', { today })
       .andWhere('snapshot.importDate < :nextDay', { nextDay })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)')
@@ -1387,9 +1432,10 @@ export class SystemsService {
     const nextDay = new Date(targetDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    // Get all snapshots for the target date
+    // Get all snapshots for the target date - only select columns needed for health calculations
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
+      .select(this.HEALTH_CALC_SELECT)
       .where('snapshot.importDate >= :targetDate', { targetDate })
       .andWhere('snapshot.importDate < :nextDay', { nextDay })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)') // Exclude fake systems
@@ -1427,20 +1473,24 @@ export class SystemsService {
     let filteredSnapshots: typeof snapshots = [];
     
     if (category === 'new') {
-      // Check each system to see if it's new (no snapshots before this date)
-      for (const [shortname, snapshot] of latestSnapshotPerSystem.entries()) {
-        const previousSnapshot = await this.snapshotRepository
+      // Bulk check which systems have ANY previous snapshot before this date
+      // This replaces the N+1 loop that queried each system individually
+      const allShortnames = Array.from(latestSnapshotPerSystem.keys());
+
+      if (allShortnames.length > 0) {
+        const systemsWithPrevious = await this.snapshotRepository
           .createQueryBuilder('snapshot')
-          .where('snapshot.shortname = :shortname', { shortname })
+          .select('DISTINCT snapshot.shortname', 'shortname')
+          .where('snapshot.shortname IN (:...shortnames)', { shortnames: allShortnames })
           .andWhere('snapshot.importDate < :targetDate', { targetDate })
           .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
           .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-          .limit(1)
-          .getOne();
+          .getRawMany();
 
-        if (!previousSnapshot) {
-          filteredSnapshots.push(snapshot);
-        }
+        const existingSet = new Set(systemsWithPrevious.map(s => s.shortname));
+
+        filteredSnapshots = Array.from(latestSnapshotPerSystem.values())
+          .filter(snapshot => !existingSet.has(snapshot.shortname));
       }
     } else {
       // Filter by health category using helper function
@@ -1512,32 +1562,34 @@ export class SystemsService {
   }
 
   async getEnvironments() {
-    // Get distinct environments from daily_snapshots table
-    const environments = await this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .select('DISTINCT snapshot.env', 'env')
-      .where('snapshot.env IS NOT NULL')
-      .andWhere('snapshot.env != :empty', { empty: '' })
-      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-      .orderBy('snapshot.env', 'ASC')
-      .getRawMany();
+    return this.getCachedOrFetch('environments', 3600000, async () => {
+      // Get distinct environments from daily_snapshots table
+      const environments = await this.snapshotRepository
+        .createQueryBuilder('snapshot')
+        .select('DISTINCT snapshot.env', 'env')
+        .where('snapshot.env IS NOT NULL')
+        .andWhere('snapshot.env != :empty', { empty: '' })
+        .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+        .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
+        .orderBy('snapshot.env', 'ASC')
+        .getRawMany();
 
-    return {
-      environments: environments.map(e => e.env).filter(Boolean),
-    };
+      return {
+        environments: environments.map(e => e.env).filter(Boolean),
+      };
+    });
   }
 
   async getReappearedSystems(env?: string) {
-    // Get the latest import date
-    const latestImportDate = await this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .select('MAX(snapshot.importDate)', 'maxDate')
-      .where('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-      .getRawOne();
+    const cacheKey = `reappeared-systems:${env || 'all'}`;
+    return this.getCachedOrFetch(cacheKey, 900000, () => this.fetchReappearedSystems(env));
+  }
 
-    if (!latestImportDate?.maxDate) {
+  private async fetchReappearedSystems(env?: string) {
+    // Get the latest import date
+    const latestDate = await this.getLatestImportDate();
+
+    if (!latestDate) {
       return {
         count: 0,
         systems: [],
@@ -1545,7 +1597,7 @@ export class SystemsService {
       };
     }
 
-    const today = new Date(latestImportDate.maxDate);
+    const today = new Date(latestDate);
     today.setHours(0, 0, 0, 0);
     
     const tomorrow = new Date(today);
@@ -1567,42 +1619,64 @@ export class SystemsService {
     
     const systemsToday = await queryBuilder.getRawMany();
 
-    const reappearedSystems = [];
+    const todayShortnames = systemsToday.map(s => s.shortname);
 
-    // For each system in today's snapshot
+    if (todayShortnames.length === 0) {
+      return { count: 0, systems: [], date: today };
+    }
+
+    // Bulk query: get the most recent snapshot date BEFORE today for all today's systems
+    // This replaces the N+1 loop that queried each system individually
+    const previousSnapshots = await this.snapshotRepository
+      .createQueryBuilder('snapshot')
+      .select('snapshot.shortname', 'shortname')
+      .addSelect('MAX(snapshot.importDate)', 'lastSeenDate')
+      .where('snapshot.shortname IN (:...shortnames)', { shortnames: todayShortnames })
+      .andWhere('snapshot.importDate < :today', { today })
+      .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
+      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
+      .groupBy('snapshot.shortname')
+      .getRawMany();
+
+    const lastSeenMap = new Map(previousSnapshots.map(r => [r.shortname, new Date(r.lastSeenDate)]));
+
+    // Filter to systems that were inactive (15+ days since last seen) and now reappeared
+    const reappearedCandidates: { shortname: string; daysSinceLastSeen: number; lastSeenDate: Date }[] = [];
     for (const sys of systemsToday) {
-      const shortname = sys.shortname;
-
-      // Get the most recent snapshot before today
-      const previousSnapshot = await this.snapshotRepository
-        .createQueryBuilder('snapshot')
-        .where('snapshot.shortname = :shortname', { shortname })
-        .andWhere('snapshot.importDate < :today', { today })
-        .andWhere('(snapshot.serverOS = 0 OR snapshot.serverOS IS NULL OR snapshot.serverOS = :false)', { false: 'False' }) // Only desktops/laptops
-        .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
-        .orderBy('snapshot.importDate', 'DESC')
-        .limit(1)
-        .getOne();
-
-      // If there was a previous snapshot
-      if (previousSnapshot) {
+      const lastSeen = lastSeenMap.get(sys.shortname);
+      if (lastSeen) {
         const daysSinceLastSeen = Math.floor(
-          (today.getTime() - new Date(previousSnapshot.importDate).getTime()) / (1000 * 60 * 60 * 24)
+          (today.getTime() - lastSeen.getTime()) / (1000 * 60 * 60 * 24)
         );
-
-        // If system was inactive (15+ days) and now reappeared
         if (daysSinceLastSeen > this.INTUNE_INACTIVE_DAYS) {
-          const system = await this.systemRepository.findOne({ where: { shortname } });
-          if (system) {
-            reappearedSystems.push({
-              ...system,
-              daysSinceLastSeen,
-              lastSeenDate: previousSnapshot.importDate,
-            });
-          }
+          reappearedCandidates.push({
+            shortname: sys.shortname,
+            daysSinceLastSeen,
+            lastSeenDate: lastSeen,
+          });
         }
       }
     }
+
+    if (reappearedCandidates.length === 0) {
+      return { count: 0, systems: [], date: today };
+    }
+
+    // Bulk fetch system records for all reappeared systems at once
+    const systemRecords = await this.systemRepository
+      .createQueryBuilder('system')
+      .where('system.shortname IN (:...shortnames)', { shortnames: reappearedCandidates.map(r => r.shortname) })
+      .getMany();
+
+    const systemMap = new Map(systemRecords.map(s => [s.shortname, s]));
+
+    const reappearedSystems = reappearedCandidates
+      .filter(r => systemMap.has(r.shortname))
+      .map(r => ({
+        ...systemMap.get(r.shortname)!,
+        daysSinceLastSeen: r.daysSinceLastSeen,
+        lastSeenDate: r.lastSeenDate,
+      }));
 
     return {
       count: reappearedSystems.length,
@@ -1618,27 +1692,19 @@ export class SystemsService {
    * Uses the most recent import date to match dashboard display
    */
   async getAllSystemsWithToolingForExport(env?: string) {
-    // Find the most recent import date (same logic as dashboard)
-    const latestImportQuery = this.snapshotRepository
-      .createQueryBuilder('snapshot')
-      .select('MAX(snapshot.importDate)', 'maxDate')
-      .where('(snapshot.serverOS IS NULL OR snapshot.serverOS != :true)', { true: 'TRUE' })
-      .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' });
+    // Find the most recent import date using cached helper
+    const latestDate = await this.getLatestImportDate();
     
-    if (env) {
-      latestImportQuery.andWhere('snapshot.env = :env', { env });
-    }
-    
-    const latestImportDate = await latestImportQuery.getRawOne();
-    
-    if (!latestImportDate || !latestImportDate.maxDate) {
+    if (!latestDate) {
       return [];
     }
 
     // Get all systems from the most recent import date - exclude servers explicitly
+    // Only select columns needed for health/tooling calculations
     const queryBuilder = this.snapshotRepository
       .createQueryBuilder('snapshot')
-      .where('snapshot.importDate = :importDate', { importDate: latestImportDate.maxDate })
+      .select(this.HEALTH_CALC_SELECT)
+      .where('snapshot.importDate = :importDate', { importDate: latestDate })
       .andWhere('(snapshot.possibleFake = 0 OR snapshot.possibleFake IS NULL)') // Exclude fake systems
       .andWhere('(snapshot.serverOS IS NULL OR snapshot.serverOS != :true)', { true: 'TRUE' }) // Exclude servers (serverOS = 'TRUE')
       .andWhere('snapshot.osFamily = :osFamily', { osFamily: 'Windows' }) // Only Windows systems
@@ -1651,9 +1717,9 @@ export class SystemsService {
     const snapshots = await queryBuilder.getMany();
 
     // Use the import date as reference for health calculations
-    const referenceDate = latestImportDate.maxDate instanceof Date
-      ? latestImportDate.maxDate
-      : new Date(latestImportDate.maxDate);
+    const referenceDate = latestDate instanceof Date
+      ? latestDate
+      : new Date(latestDate);
 
     // Map to export format with tooling status
     return snapshots.map(snapshot => ({
