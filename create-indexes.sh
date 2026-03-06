@@ -7,8 +7,8 @@
 #   ./create-indexes.sh --host   # Connect via host using exposed port 3308
 #
 # The script supports two connection modes:
-#   1. Docker exec (default): runs mysql inside the compliance-tracker-db container
-#   2. Host mode (--host): connects via localhost:3308 using the mysql CLI on the host
+#   1. Docker exec (default): runs mariadb client inside the compliance-tracker-db container
+#   2. Host mode (--host): connects via localhost:3308 using the mariadb/mysql CLI on the host
 
 set -euo pipefail
 
@@ -55,15 +55,20 @@ done
 # ---------------------------------------------------------------------------
 
 # Execute a SQL statement and return the output.
-# Suppresses the mysql password warning on stderr.
+# Suppresses the mariadb password warning on stderr.
 run_sql() {
   local sql="$1"
 
   if [ "$USE_HOST" = true ]; then
-    mysql -h 127.0.0.1 -P "${HOST_PORT}" -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" -e "${sql}" 2>/dev/null
+    # Try mariadb client first, fall back to mysql
+    if command -v mariadb &>/dev/null; then
+      mariadb -h 127.0.0.1 -P "${HOST_PORT}" -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" -e "${sql}" 2>/dev/null
+    else
+      mysql -h 127.0.0.1 -P "${HOST_PORT}" -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" -e "${sql}" 2>/dev/null
+    fi
   else
     docker exec "${CONTAINER_NAME}" \
-      mysql -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" -e "${sql}" 2>/dev/null
+      mariadb -u "${DB_USER}" -p"${DB_PASSWORD}" "${DB_NAME}" -e "${sql}" 2>/dev/null
   fi
 }
 
