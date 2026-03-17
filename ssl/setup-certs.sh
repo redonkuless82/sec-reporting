@@ -156,6 +156,29 @@ print_ok "ssl/certs/fullchain.crt"
 echo "  [5/5] Setting up private key..."
 cp "$KEY_FILE" "$CERTS_DIR/server.key"
 chmod 600 "$CERTS_DIR/server.key"
+
+# Check if the key is passphrase-protected and decrypt it
+# Nginx in Docker cannot prompt for a passphrase, so the key must be unencrypted
+if grep -q "ENCRYPTED" "$CERTS_DIR/server.key"; then
+    print_warn "Private key is passphrase-protected — Nginx cannot use encrypted keys in Docker"
+    echo ""
+    echo -e "  ${CYAN}Enter the passphrase to decrypt the private key:${NC}"
+    if openssl rsa -in "$CERTS_DIR/server.key" -out "$CERTS_DIR/server.key.decrypted" 2>/dev/null; then
+        mv "$CERTS_DIR/server.key.decrypted" "$CERTS_DIR/server.key"
+        chmod 600 "$CERTS_DIR/server.key"
+        print_ok "Private key decrypted successfully"
+    else
+        rm -f "$CERTS_DIR/server.key.decrypted"
+        print_err "Failed to decrypt private key. Wrong passphrase?"
+        echo ""
+        echo "  You can manually decrypt it with:"
+        echo "    openssl rsa -in ssl/server.key -out ssl/certs/server.key"
+        exit 1
+    fi
+else
+    print_ok "Private key is not encrypted (good)"
+fi
+
 print_ok "ssl/certs/server.key (permissions: 600)"
 
 # Cleanup
@@ -195,7 +218,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ${DOMAIN_NAME};
     root /usr/share/nginx/html;
     index index.html;
