@@ -1,0 +1,14 @@
+# Never commit private keys or certificates to version control
+*.key
+*.csr
+*.p7b
+*.pem
+*.crt
+*.cer
+*.der
+certs/*.key
+certs/*.crt
+certs/*.pem
+
+# Keep the directory structure
+!certs/.gitkeep

@@ -48,3 +48,6 @@ coverage/
 
 # Docker
 docker-compose.override.yml
+
+# SSL - generated config contains domain name, never commit
+frontend/nginx.ssl.conf
