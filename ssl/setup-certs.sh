@@ -118,8 +118,20 @@ print_header "Converting Certificates"
 mkdir -p "$CERTS_DIR"
 
 echo "  [1/5] Converting P7B to PEM format..."
-openssl pkcs7 -print_certs -in "$P7B_FILE" -out "$CERTS_DIR/all-certs.pem"
-print_ok "Extracted all certificates"
+
+# Auto-detect P7B format: try PEM first, then DER (binary)
+if openssl pkcs7 -print_certs -in "$P7B_FILE" -out "$CERTS_DIR/all-certs.pem" 2>/dev/null; then
+    print_ok "Extracted certificates (PEM format P7B)"
+elif openssl pkcs7 -print_certs -inform DER -in "$P7B_FILE" -out "$CERTS_DIR/all-certs.pem" 2>/dev/null; then
+    print_ok "Extracted certificates (DER/binary format P7B)"
+else
+    print_err "Failed to parse P7B file. It may be corrupted or in an unsupported format."
+    echo ""
+    echo "  Try manually converting with:"
+    echo "    openssl pkcs7 -print_certs -in ssl/server.p7b -out ssl/certs/all-certs.pem"
+    echo "    openssl pkcs7 -print_certs -inform DER -in ssl/server.p7b -out ssl/certs/all-certs.pem"
+    exit 1
+fi
 
 echo "  [2/5] Extracting server certificate..."
 awk '/-----BEGIN CERTIFICATE-----/{found++} found==1{print} /-----END CERTIFICATE-----/&&found==1{exit}' \
